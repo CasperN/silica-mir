@@ -10,7 +10,7 @@ use crate::common::{
     FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam, Marker, Markers, OutlivesBound,
     RefKind, SourceInfo, Span,
 };
-use crate::diagnostics::{Diagnostic, Diagnostics};
+use crate::diagnostics::{Diagnostic, Diagnostics, DuplicateTracker};
 use crate::hll::ast::*;
 use crate::mir::parser::ParserCode;
 use std::collections::BTreeSet;
@@ -202,6 +202,62 @@ impl Parser {
                 d.push_error(self.diag(node, ParserCode::InvalidLiteral, s));
                 None
             }
+        }
+    }
+
+    /// Parse a `lifetime_param` node and its outlives bounds.
+    fn map_lifetime_param(
+        &self,
+        node: Node,
+        d: &mut Diagnostics,
+    ) -> Option<(LifetimeParam, Vec<OutlivesBound>)> {
+        let Some(name_node) = node.child_by_field_name("name") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "lifetime param missing name"));
+            return None;
+        };
+        let subject = Lifetime(self.get_text(name_node).trim_start_matches('\'').to_string());
+        let mut outlives = Vec::new();
+        let mut bcursor = node.walk();
+        for bound_node in node.children_by_field_name("bound", &mut bcursor) {
+            let bound = Lifetime(self.get_text(bound_node).trim_start_matches('\'').to_string());
+            outlives.push(OutlivesBound::written(
+                subject.clone(),
+                bound,
+                span_of(bound_node),
+            ));
+        }
+        Some((LifetimeParam::written(subject, span_of(node)), outlives))
+    }
+
+    /// Collect all child nodes that match expression syntax.
+    fn collect_child_exprs(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<Vec<Expr>> {
+        let mut cursor = node.walk();
+        let mut exprs = Vec::new();
+        for c in node.children(&mut cursor) {
+            if self.is_expr_kind(&c) {
+                exprs.push(self.map_expr(c, scope, d)?);
+            }
+        }
+        Some(exprs)
+    }
+
+    /// Find an optional child node that matches expression syntax.
+    fn find_child_expr(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<Option<Box<Expr>>> {
+        let mut cursor = node.walk();
+        let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
+        match inner {
+            Some(n) => Some(Some(Box::new(self.map_expr(n, scope, d)?))),
+            None => Some(None),
         }
     }
 
@@ -705,7 +761,7 @@ impl Parser {
             Bounds::default()
         };
         let mut methods = Vec::new();
-        let mut names: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
+        let mut names = DuplicateTracker::new();
         for child in node.children(&mut cursor) {
             if child.kind() != "fn_decl" {
                 continue;
@@ -730,20 +786,18 @@ impl Parser {
                 }
                 method.linkage = Linkage::Local;
             }
-            if let Some(prev_span) = names.get(&method.name) {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::DuplicateMethod,
-                        format!("duplicate trait method '{}'", method.name),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous declaration of '{}' here", method.name))
-                    .with_hint("method names within the same trait must be unique")
-                    .in_function(&context),
-                );
+            if !names.check_unique_in(
+                method.name.clone(),
+                SourceInfo::written(span_of(child)),
+                ParserCode::DuplicateMethod,
+                format!("duplicate trait method '{}'", method.name),
+                format!("previous declaration of '{}' here", method.name),
+                Some("method names within the same trait must be unique"),
+                Some(&context),
+                d,
+            ) {
                 continue;
             }
-            names.insert(method.name.clone(), span_of(child));
             methods.push(method);
         }
 
@@ -805,7 +859,7 @@ impl Parser {
         scope.self_ty = Some(target.clone());
 
         let mut methods = Vec::new();
-        let mut names: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
+        let mut names = DuplicateTracker::new();
         for child in node.children(&mut cursor) {
             if child.kind() != "fn_decl" {
                 continue;
@@ -830,20 +884,18 @@ impl Parser {
                 }
                 method.linkage = Linkage::Local;
             }
-            if let Some(prev_span) = names.get(&method.name) {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::DuplicateMethod,
-                        format!("duplicate impl method '{}'", method.name),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous definition of '{}' here", method.name))
-                    .with_hint("method names within the same impl block must be unique")
-                    .in_function(&context),
-                );
+            if !names.check_unique_in(
+                method.name.clone(),
+                SourceInfo::written(span_of(child)),
+                ParserCode::DuplicateMethod,
+                format!("duplicate impl method '{}'", method.name),
+                format!("previous definition of '{}' here", method.name),
+                Some("method names within the same impl block must be unique"),
+                Some(&context),
+                d,
+            ) {
                 continue;
             }
-            names.insert(method.name.clone(), span_of(child));
             methods.push(method);
         }
 
@@ -882,15 +934,7 @@ impl Parser {
         }
         match node.kind() {
             "bool" => return Some(TypeKind::Bool),
-            "tuple_type" => {
-                let mut elem_types = Vec::new();
-                for i in 0..node.named_child_count() {
-                    if let Some(child) = node.named_child(i as u32) {
-                        elem_types.push(self.map_type(child, scope, d)?);
-                    }
-                }
-                return Some(TypeKind::Tuple(elem_types));
-            }
+            "tuple_type" => return self.map_tuple_type(node, scope, d),
             "never" => return Some(TypeKind::Never),
             "identifier" => {
                 return Some(self.identifier_to_type_kind(
@@ -920,15 +964,7 @@ impl Parser {
         }
         match first.kind() {
             "bool" => return Some(TypeKind::Bool),
-            "tuple_type" => {
-                let mut elem_types = Vec::new();
-                for i in 0..first.named_child_count() {
-                    if let Some(child) = first.named_child(i as u32) {
-                        elem_types.push(self.map_type(child, scope, d)?);
-                    }
-                }
-                return Some(TypeKind::Tuple(elem_types));
-            }
+            "tuple_type" => return self.map_tuple_type(first, scope, d),
             "never" => return Some(TypeKind::Never),
             "identifier" => {
                 // Identifier alt with optional `type_args` as sibling:
@@ -949,124 +985,165 @@ impl Parser {
         }
 
         let text = self.get_text(first);
-        if text == "&" {
-            let mut cursor = node.walk();
-            let children: Vec<Node> = node.children(&mut cursor).collect();
-            let mut idx = 1;
-            let lt = if idx < children.len() && children[idx].kind() == "lifetime" {
-                let lt = Lifetime(self.get_text(children[idx]).trim_start_matches('\'').to_string());
-                idx += 1;
-                Some(lt)
-            } else {
+        match text {
+            "&" => self.map_ref_type(node, scope, d),
+            "*" => self.map_raw_ptr_type(node, scope, d),
+            "[" => self.map_array_type(node, scope, d),
+            "fn" => self.map_fn_type(node, scope, d),
+            _ => {
+                d.push_error(self.diag(
+                    first,
+                    ParserCode::MalformedCst,
+                    format!("unexpected token in type: {}", text),
+                ));
                 None
-            };
-            let kind = if idx < children.len() {
-                match self.get_text(children[idx]) {
-                    "mut" => {
-                        idx += 1;
-                        RefKind::Mut
-                    }
-                    "out" => {
-                        idx += 1;
-                        RefKind::Out
-                    }
-                    "drop" => {
-                        idx += 1;
-                        RefKind::Drop
-                    }
-                    "uninit" => {
-                        idx += 1;
-                        RefKind::Uninit
-                    }
-                    _ => RefKind::Shared,
-                }
-            } else {
-                RefKind::Shared
-            };
-            let Some(&inner) = children.get(idx) else {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::MalformedCst,
-                    "missing inner type for reference",
-                ));
-                return None;
-            };
-            return Some(TypeKind::Ref(
-                kind,
-                lt,
-                Box::new(self.map_type(inner, scope, d)?),
-            ));
-        }
-        if text == "*" {
-            let Some(inner) = node.child(1) else {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::MalformedCst,
-                    "missing inner type for raw pointer",
-                ));
-                return None;
-            };
-            return Some(TypeKind::RawPtr(Box::new(self.map_type(inner, scope, d)?)));
-        }
-        if text == "[" {
-            let Some(elem) = node.child_by_field_name("element") else {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::MalformedCst,
-                    "array type missing element",
-                ));
-                return None;
-            };
-            let Some(len_node) = node.child_by_field_name("length") else {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::MalformedCst,
-                    "array type missing length",
-                ));
-                return None;
-            };
-            let (len, _) =
-                self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node, d)?;
-            return Some(TypeKind::Array(
-                Box::new(self.map_type(elem, scope, d)?),
-                len,
-            ));
-        }
-        if text == "fn" {
-            // `fn(T,...) [-> R]`. The optional `return_type` field
-            // sits outside the paren-delimited params. Iterate all
-            // `type` children for params, skipping the return-type
-            // node when present; default to unit if the arrow was
-            // omitted.
-            let ret_node = node.child_by_field_name("return_type");
-            let mut params = Vec::new();
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if child.kind() == "type" && Some(child) != ret_node {
-                    params.push(self.map_type(child, scope, d)?);
-                }
             }
-            let ret = if let Some(rt) = ret_node {
-                self.map_type(rt, scope, d)?
-            } else {
-                Type::new(
-                    TypeKind::Tuple(Vec::new()),
-                    SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
-                )
-            };
-            let abi = self.parse_abi_clause(node, d);
-            return Some(TypeKind::Fn {
-                abi,
-                params,
-                ret: Box::new(ret),
-            });
         }
-        d.push_error(self.diag(
-            first,
-            ParserCode::MalformedCst,
-            format!("unexpected token in type: {}", text),
-        ));
-        None
+    }
+
+    fn map_tuple_type(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<TypeKind> {
+        let mut elem_types = Vec::new();
+        for i in 0..node.named_child_count() {
+            if let Some(child) = node.named_child(i as u32) {
+                elem_types.push(self.map_type(child, scope, d)?);
+            }
+        }
+        Some(TypeKind::Tuple(elem_types))
+    }
+
+    fn map_ref_type(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<TypeKind> {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+        let mut idx = 1;
+        let lt = if idx < children.len() && children[idx].kind() == "lifetime" {
+            let lt = Lifetime(self.get_text(children[idx]).trim_start_matches('\'').to_string());
+            idx += 1;
+            Some(lt)
+        } else {
+            None
+        };
+        let kind = if idx < children.len() {
+            match self.get_text(children[idx]) {
+                "mut" => {
+                    idx += 1;
+                    RefKind::Mut
+                }
+                "out" => {
+                    idx += 1;
+                    RefKind::Out
+                }
+                "drop" => {
+                    idx += 1;
+                    RefKind::Drop
+                }
+                "uninit" => {
+                    idx += 1;
+                    RefKind::Uninit
+                }
+                _ => RefKind::Shared,
+            }
+        } else {
+            RefKind::Shared
+        };
+        let Some(&inner) = children.get(idx) else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "missing inner type for reference",
+            ));
+            return None;
+        };
+        Some(TypeKind::Ref(
+            kind,
+            lt,
+            Box::new(self.map_type(inner, scope, d)?),
+        ))
+    }
+
+    fn map_raw_ptr_type(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<TypeKind> {
+        let Some(inner) = node.child(1) else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "missing inner type for raw pointer",
+            ));
+            return None;
+        };
+        Some(TypeKind::RawPtr(Box::new(self.map_type(inner, scope, d)?)))
+    }
+
+    fn map_array_type(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<TypeKind> {
+        let Some(elem) = node.child_by_field_name("element") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "array type missing element",
+            ));
+            return None;
+        };
+        let Some(len_node) = node.child_by_field_name("length") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "array type missing length",
+            ));
+            return None;
+        };
+        let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node, d)?;
+        Some(TypeKind::Array(
+            Box::new(self.map_type(elem, scope, d)?),
+            len,
+        ))
+    }
+
+    fn map_fn_type(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<TypeKind> {
+        let ret_node = node.child_by_field_name("return_type");
+        let mut params = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "type" && Some(child) != ret_node {
+                params.push(self.map_type(child, scope, d)?);
+            }
+        }
+        let ret = if let Some(rt) = ret_node {
+            self.map_type(rt, scope, d)?
+        } else {
+            Type::new(
+                TypeKind::Tuple(Vec::new()),
+                SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
+            )
+        };
+        let abi = self.parse_abi_clause(node, d);
+        Some(TypeKind::Fn {
+            abi,
+            params,
+            ret: Box::new(ret),
+        })
     }
 
     /// Resolve a bare identifier that appeared in type position. If
@@ -1109,7 +1186,7 @@ impl Parser {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut outlives = Vec::new();
-        let mut declared_here: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
+        let mut tracker = DuplicateTracker::new();
         let mut pre_cursor = node.walk();
         for child in node
             .children(&mut pre_cursor)
@@ -1123,16 +1200,15 @@ impl Parser {
             if self.reject_self_ident(&name, name_node, "a type parameter", d) {
                 return None;
             }
-            if let Some(prev_span) = declared_here.get(&name) {
-                d.push_error(
-                    self.diag(
-                        name_node,
-                        ParserCode::DuplicateTypeParam,
-                        format!("duplicate type parameter '{}'", name),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous declaration of '{}' here", name))
-                    .with_hint("type parameters within the same declaration must have unique names"),
-                );
+            if !tracker.check_unique(
+                name.clone(),
+                SourceInfo::written(span_of(name_node)),
+                ParserCode::DuplicateTypeParam,
+                format!("duplicate type parameter '{}'", name),
+                format!("previous declaration of '{}' here", name),
+                Some("type parameters within the same declaration must have unique names"),
+                d,
+            ) {
                 return None;
             }
             if scope.params.contains(&name) {
@@ -1146,40 +1222,15 @@ impl Parser {
                 );
                 return None;
             }
-            declared_here.insert(name.clone(), span_of(name_node));
             scope.params.insert(name);
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "lifetime_param" => {
-                    let Some(name_node) = child.child_by_field_name("name") else {
-                        d.push_error(self.diag(
-                            child,
-                            ParserCode::MalformedCst,
-                            "lifetime param missing name",
-                        ));
-                        continue;
-                    };
-                    let subject = Lifetime(
-                        self.get_text(name_node)
-                            .trim_start_matches('\'')
-                            .to_string(),
-                    );
-                    lifetimes.push(LifetimeParam::written(subject.clone(), span_of(child)));
-                    let mut bcursor = child.walk();
-                    for bound_node in child.children_by_field_name("bound", &mut bcursor) {
-                        let bound = Lifetime(
-                            self.get_text(bound_node)
-                                .trim_start_matches('\'')
-                                .to_string(),
-                        );
-                        outlives.push(OutlivesBound::written(
-                            subject.clone(),
-                            bound,
-                            span_of(bound_node),
-                        ));
-                    }
+                    let (param, bounds) = self.map_lifetime_param(child, d)?;
+                    lifetimes.push(param);
+                    outlives.extend(bounds);
                 }
                 "type_param" => {
                     let Some(name_node) = child.child_by_field_name("name") else {
@@ -1220,8 +1271,10 @@ impl Parser {
         scope: &TypeScope,
         d: &mut Diagnostics,
     ) -> Option<Bounds> {
-        let mut marker_bounds: Vec<(Marker, Span)> = Vec::new();
-        let mut trait_bounds: Vec<TraitBound> = Vec::new();
+        let mut marker_bounds = Vec::new();
+        let mut trait_bounds = Vec::new();
+        let mut marker_tracker = DuplicateTracker::new();
+        let mut trait_tracker = DuplicateTracker::new();
         let mut cursor = node.walk();
         for bound in node.children_by_field_name("bound", &mut cursor) {
             let Some(trait_name) = bound.child_by_field_name("name") else {
@@ -1245,50 +1298,42 @@ impl Parser {
             } else {
                 (Vec::new(), Vec::new())
             };
-            let marker = (lifetime_args.is_empty() && type_args.is_empty())
-                .then(|| match name.as_str() {
-                    "Copy" => Some(Marker::Copy),
-                    "Drop" => Some(Marker::Drop),
-                    "Move" => Some(Marker::Move),
-                    _ => None,
-                })
-                .flatten();
-            if let Some(marker) = marker {
-                if let Some((_, prev_span)) = marker_bounds.iter().find(|(m, _)| *m == marker) {
-                    d.push_error(
-                        self.diag(
-                            bound,
-                            ParserCode::DuplicateMarker,
-                            format!("duplicate marker '{}'", name),
-                        )
-                        .with_secondary(SourceInfo::written(*prev_span), format!("previous '{}' marker here", name))
-                        .with_hint("remove the redundant marker"),
-                    );
-                    return None;
+            if lifetime_args.is_empty() && type_args.is_empty() {
+                if let Some(marker) = Marker::from_name(&name) {
+                    if !marker_tracker.check_unique(
+                        marker,
+                        SourceInfo::written(span_of(bound)),
+                        ParserCode::DuplicateMarker,
+                        format!("duplicate marker '{}'", name),
+                        format!("previous '{}' marker here", name),
+                        Some("remove the redundant marker"),
+                        d,
+                    ) {
+                        return None;
+                    }
+                    marker_bounds.push(marker);
+                    continue;
                 }
-                marker_bounds.push((marker, span_of(bound)));
-                continue;
             }
             let trait_bound = TraitBound {
                 trait_path: Instance::new(name, lifetime_args, type_args),
                 source: SourceInfo::written(span_of(bound)),
             };
-            if let Some(prev) = trait_bounds.iter().find(|tb| tb.trait_path == trait_bound.trait_path) {
-                d.push_error(
-                    self.diag(
-                        bound,
-                        ParserCode::DuplicateTraitBound,
-                        format!("duplicate trait bound '{}'", trait_bound.trait_path),
-                    )
-                    .with_secondary(prev.source, format!("previous bound on '{}' here", trait_bound.trait_path))
-                    .with_hint("remove the redundant trait bound"),
-                );
+            if !trait_tracker.check_unique(
+                trait_bound.trait_path.to_string(),
+                trait_bound.source,
+                ParserCode::DuplicateTraitBound,
+                format!("duplicate trait bound '{}'", trait_bound.trait_path),
+                format!("previous bound on '{}' here", trait_bound.trait_path),
+                Some("remove the redundant trait bound"),
+                d,
+            ) {
                 return None;
             }
             trait_bounds.push(trait_bound);
         }
         Some(Bounds {
-            markers: Markers::from_iter(marker_bounds.into_iter().map(|(m, _)| m)),
+            markers: Markers::from_iter(marker_bounds),
             traits: trait_bounds,
         })
     }
@@ -1410,413 +1455,30 @@ impl Parser {
             }),
 
             // ---- Compound primaries ----
-            "paren_expr" => {
-                let mut cursor = node.walk();
-                let inner = node.children(&mut cursor).find(|c| c.kind() == "expr");
-                if let Some(e) = inner {
-                    self.map_expr(e, scope, d)
-                } else {
-                    Some(Expr {
-                        kind: ExprKind::Tuple(Vec::new()),
-                        source: SourceInfo::written(span),
-                    })
-                }
-            }
+            "paren_expr" => self.map_paren_expr(node, scope, d),
             "block_expr" => self.map_block(node, scope, d),
             "if_expr" => self.map_if(node, scope, d),
-            "loop_expr" => {
-                let Some(body) = node.child_by_field_name("body") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "loop missing body"));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::Loop(Box::new(self.map_expr(body, scope, d)?)),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "break_expr" => {
-                let mut cursor = node.walk();
-                let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
-                let val = match inner {
-                    Some(n) => Some(Box::new(self.map_expr(n, scope, d)?)),
-                    None => None,
-                };
-                Some(Expr {
-                    kind: ExprKind::Break(val),
-                    source: SourceInfo::written(span),
-                })
-            }
+            "loop_expr" => self.map_loop_expr(node, scope, d),
+            "break_expr" => self.map_break_expr(node, scope, d),
             "continue_expr" => Some(Expr {
                 kind: ExprKind::Continue,
                 source: SourceInfo::written(span),
             }),
-            "return_expr" => {
-                let mut cursor = node.walk();
-                let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
-                let val = match inner {
-                    Some(n) => Some(Box::new(self.map_expr(n, scope, d)?)),
-                    None => None,
-                };
-                Some(Expr {
-                    kind: ExprKind::Return(val),
-                    source: SourceInfo::written(span),
-                })
-            }
+            "return_expr" => self.map_return_expr(node, scope, d),
             "struct_constr" => self.map_struct_constr(node, scope, d),
             "scoped_identifier" => self.map_scoped_identifier(node, scope, d),
-            "array_lit" => {
-                let mut cursor = node.walk();
-                let mut elems = Vec::new();
-                for c in node.children(&mut cursor) {
-                    if self.is_expr_kind(&c) {
-                        elems.push(self.map_expr(c, scope, d)?);
-                    }
-                }
-                Some(Expr {
-                    kind: ExprKind::Array(elems),
-                    source: SourceInfo::written(span),
-                })
-            }
+            "array_lit" => self.map_array_lit(node, scope, d),
 
             // ---- Operators (named for nested CST structure) ----
-            "assign_expr" => {
-                let Some(lhs) = node.child_by_field_name("lhs") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "assign missing lhs"));
-                    return None;
-                };
-                let Some(rhs) = node.child_by_field_name("rhs") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "assign missing rhs"));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::Assign(
-                        Box::new(self.map_expr(lhs, scope, d)?),
-                        Box::new(self.map_expr(rhs, scope, d)?),
-                    ),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "borrow_expr" => {
-                let Some(kind_node) = node.child_by_field_name("kind") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "borrow missing kind"));
-                    return None;
-                };
-                let ref_kind = match self.get_text(kind_node) {
-                    "&" => RefKind::Shared,
-                    "&mut" => RefKind::Mut,
-                    "&out" => RefKind::Out,
-                    "&drop" => RefKind::Drop,
-                    "&uninit" => RefKind::Uninit,
-                    other => {
-                        d.push_error(self.diag(
-                            kind_node,
-                            ParserCode::MalformedCst,
-                            format!("unknown borrow kind: {}", other),
-                        ));
-                        return None;
-                    }
-                };
-                let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "borrow missing target",
-                    ));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::Borrow(ref_kind, Box::new(self.map_expr(target, scope, d)?)),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "raw_borrow_expr" => {
-                let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "&raw missing target"));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::RawBorrow(Box::new(self.map_expr(target, scope, d)?)),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "unary_expr" => {
-                let Some(operand) = node.child_by_field_name("operand") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "unary expression missing operand",
-                    ));
-                    return None;
-                };
-                let Some(op_node) = node.child_by_field_name("op") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "unary expression missing op",
-                    ));
-                    return None;
-                };
-                let op = match self.get_text(op_node) {
-                    "-" => UnOp::Neg,
-                    other => {
-                        d.push_error(self.diag(
-                            op_node,
-                            ParserCode::MalformedCst,
-                            format!("unknown unary operator: {}", other),
-                        ));
-                        return None;
-                    }
-                };
-                Some(Expr {
-                    kind: ExprKind::Unary(op, Box::new(self.map_expr(operand, scope, d)?)),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "binary_expr" => {
-                let Some(lhs) = node.child_by_field_name("lhs") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "binary expression missing lhs",
-                    ));
-                    return None;
-                };
-                let Some(op_node) = node.child_by_field_name("op") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "binary expression missing op",
-                    ));
-                    return None;
-                };
-                let Some(rhs) = node.child_by_field_name("rhs") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "binary expression missing rhs",
-                    ));
-                    return None;
-                };
-                let op = match self.get_text(op_node) {
-                    "+" => BinOp::Add,
-                    "-" => BinOp::Sub,
-                    "*" => BinOp::Mul,
-                    "/" => BinOp::Div,
-                    "%" => BinOp::Rem,
-                    "==" => BinOp::Eq,
-                    "!=" => BinOp::Ne,
-                    "<" => BinOp::Lt,
-                    "<=" => BinOp::Le,
-                    ">" => BinOp::Gt,
-                    ">=" => BinOp::Ge,
-                    other => {
-                        d.push_error(self.diag(
-                            op_node,
-                            ParserCode::MalformedCst,
-                            format!("unknown binary operator: {}", other),
-                        ));
-                        return None;
-                    }
-                };
-                Some(Expr {
-                    kind: ExprKind::Binary(
-                        Box::new(self.map_expr(lhs, scope, d)?),
-                        op,
-                        Box::new(self.map_expr(rhs, scope, d)?),
-                    ),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "field_access" => {
-                let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "field access missing target",
-                    ));
-                    return None;
-                };
-                let Some(field) = node.child_by_field_name("field") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "field access missing field",
-                    ));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::FieldAccess(
-                        Box::new(self.map_expr(target, scope, d)?),
-                        self.get_text(field).to_string(),
-                    ),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "deref_expr" => {
-                let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "deref missing target"));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::Deref(Box::new(self.map_expr(target, scope, d)?)),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "cast_expr" => {
-                let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "cast missing target"));
-                    return None;
-                };
-                let Some(ty_node) = node.child_by_field_name("ty") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "cast missing type"));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::Cast(
-                        Box::new(self.map_expr(target, scope, d)?),
-                        self.map_type(ty_node, scope, d)?,
-                    ),
-                    source: SourceInfo::written(span),
-                })
-            }
-            "call_expr" => {
-                let Some(func) = node.child_by_field_name("function") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "call missing function",
-                    ));
-                    return None;
-                };
-                // Generic calls parse as `call_expr(instantiation_expr(f, <T>), args)`
-                // — unwrap the inner instantiation_expr to lift the type args
-                // onto the call's generics slot.
-                let (func_node, generics) = if func.kind() == "instantiation_expr" {
-                    let Some(inner_fn) = func.child_by_field_name("function") else {
-                        d.push_error(self.diag(
-                            func,
-                            ParserCode::MalformedCst,
-                            "instantiation missing function",
-                        ));
-                        return None;
-                    };
-                    let Some(type_args_node) = func.child_by_field_name("type_args") else {
-                        d.push_error(self.diag(
-                            func,
-                            ParserCode::MalformedCst,
-                            "instantiation missing type_args",
-                        ));
-                        return None;
-                    };
-                    let (lifetimes, types) = self.map_type_args(type_args_node, scope, d)?;
-                    (inner_fn, GenericArgs { lifetimes, types })
-                } else {
-                    (func, GenericArgs::empty())
-                };
-                let target = if func_node.kind() == "field_access" {
-                    let Some(receiver) = func_node.child_by_field_name("target") else {
-                        d.push_error(self.diag(
-                            func_node,
-                            ParserCode::MalformedCst,
-                            "receiver call missing receiver",
-                        ));
-                        return None;
-                    };
-                    let Some(method) = func_node.child_by_field_name("field") else {
-                        d.push_error(self.diag(
-                            func_node,
-                            ParserCode::MalformedCst,
-                            "receiver call missing method",
-                        ));
-                        return None;
-                    };
-                    CallTarget::Receiver {
-                        receiver: Box::new(self.map_expr(receiver, scope, d)?),
-                        method: self.get_text(method).to_string(),
-                        method_source: SourceInfo::written(span_of(method)),
-                        selector_source: SourceInfo::written(span_of(func_node)),
-                    }
-                } else if func_node.kind() == "qualified_method" {
-                    let Some(self_ty) = func_node.child_by_field_name("self_ty") else {
-                        d.push_error(self.diag(
-                            func_node,
-                            ParserCode::MalformedCst,
-                            "qualified method missing self type",
-                        ));
-                        return None;
-                    };
-                    let Some(method) = func_node.child_by_field_name("method_name") else {
-                        d.push_error(self.diag(
-                            func_node,
-                            ParserCode::MalformedCst,
-                            "qualified method missing method name",
-                        ));
-                        return None;
-                    };
-                    let trait_path = if let Some(trait_name) =
-                        func_node.child_by_field_name("trait_name")
-                    {
-                        let (lifetimes, types) =
-                            if let Some(trait_args) = func_node.child_by_field_name("trait_args") {
-                                self.map_type_args(trait_args, scope, d)?
-                            } else {
-                                (Vec::new(), Vec::new())
-                            };
-                        Some(Instance::new(self.get_text(trait_name), lifetimes, types))
-                    } else {
-                        None
-                    };
-                    CallTarget::Qualified {
-                        self_ty: self.map_type(self_ty, scope, d)?,
-                        trait_path,
-                        method: self.get_text(method).to_string(),
-                        method_source: SourceInfo::written(span_of(method)),
-                        selector_source: SourceInfo::written(span_of(func_node)),
-                    }
-                } else if func_node.kind() == "scoped_identifier" {
-                    let Some(target_name) = func_node.child_by_field_name("target_name") else {
-                        d.push_error(self.diag(
-                            func_node,
-                            ParserCode::MalformedCst,
-                            "scoped identifier missing target name",
-                        ));
-                        return None;
-                    };
-                    let target_text = self.get_text(target_name);
-                    let resolved_target_name = self.resolve_constructor_name(target_text, scope);
-                    let target_ty = Type::new(
-                        TypeKind::Custom(Instance::new(resolved_target_name, Vec::new(), Vec::new())),
-                        SourceInfo::written(span_of(target_name)),
-                    );
-                    let Some(member) = func_node.child_by_field_name("name") else {
-                        d.push_error(self.diag(
-                            func_node,
-                            ParserCode::MalformedCst,
-                            "scoped identifier missing member name",
-                        ));
-                        return None;
-                    };
-                    CallTarget::Path {
-                        target: target_ty,
-                        member: self.get_text(member).to_string(),
-                        member_source: SourceInfo::written(span_of(member)),
-                        selector_source: SourceInfo::written(span_of(func_node)),
-                    }
-                } else {
-                    CallTarget::Expr(Box::new(self.map_expr(func_node, scope, d)?))
-                };
-                let mut cursor = node.walk();
-                let mut args = Vec::new();
-                for c in node.children(&mut cursor) {
-                    if c != func && self.is_expr_kind(&c) {
-                        args.push(self.map_expr(c, scope, d)?);
-                    }
-                }
-                Some(Expr {
-                    kind: ExprKind::Call(target, generics, args),
-                    source: SourceInfo::written(span),
-                })
-            }
+            "assign_expr" => self.map_assign_expr(node, scope, d),
+            "borrow_expr" => self.map_borrow_expr(node, scope, d),
+            "raw_borrow_expr" => self.map_raw_borrow_expr(node, scope, d),
+            "unary_expr" => self.map_unary_expr(node, scope, d),
+            "binary_expr" => self.map_binary_expr(node, scope, d),
+            "field_access" => self.map_field_access(node, scope, d),
+            "deref_expr" => self.map_deref_expr(node, scope, d),
+            "cast_expr" => self.map_cast_expr(node, scope, d),
+            "call_expr" => self.map_call_expr(node, scope, d),
             // Bare `foo<T>` without a call. Silica doesn't use this shape
             // as a value; it exists only to make tree-sitter's LR
             // generator disambiguate `foo<T>(x)` from `a < b > c`. Reject
@@ -1843,23 +1505,7 @@ impl Parser {
                 );
                 None
             }
-            "index_expr" => {
-                let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "index missing target"));
-                    return None;
-                };
-                let Some(idx) = node.child_by_field_name("index") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "index missing index"));
-                    return None;
-                };
-                Some(Expr {
-                    kind: ExprKind::ArrayIndex(
-                        Box::new(self.map_expr(target, scope, d)?),
-                        Box::new(self.map_expr(idx, scope, d)?),
-                    ),
-                    source: SourceInfo::written(span),
-                })
-            }
+            "index_expr" => self.map_index_expr(node, scope, d),
             "match_expr" => {
                 let Some(scrut) = node.child_by_field_name("scrutinee") else {
                     d.push_error(self.diag(
@@ -1871,39 +1517,7 @@ impl Parser {
                 };
                 self.map_match(node, scrut, scope, d)
             }
-            "lambda_expr" => {
-                let mut params = Vec::new();
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    if child.kind() == "lambda_param" {
-                        if let Some(param) = self.map_lambda_param(child, scope, d) {
-                            params.push(param);
-                        }
-                    }
-                }
-                let ret_ty = if let Some(ret_node) = node.child_by_field_name("return_type") {
-                    self.map_type(ret_node, scope, d)
-                } else {
-                    None
-                };
-                let Some(body_node) = node.child_by_field_name("body") else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "lambda missing body expression",
-                    ));
-                    return None;
-                };
-                let body = self.map_expr(body_node, scope, d)?;
-                Some(Expr {
-                    kind: ExprKind::Lambda {
-                        params,
-                        ret_ty,
-                        body: Box::new(body),
-                    },
-                    source: SourceInfo::written(span),
-                })
-            }
+            "lambda_expr" => self.map_lambda_expr(node, scope, d),
 
             other => {
                 d.push_error(self.diag(
@@ -1914,6 +1528,453 @@ impl Parser {
                 None
             }
         }
+    }
+
+    fn map_paren_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let mut cursor = node.walk();
+        let inner = node.children(&mut cursor).find(|c| c.kind() == "expr");
+        if let Some(e) = inner {
+            self.map_expr(e, scope, d)
+        } else {
+            Some(Expr {
+                kind: ExprKind::Tuple(Vec::new()),
+                source: SourceInfo::written(span_of(node)),
+            })
+        }
+    }
+
+    fn map_loop_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(body) = node.child_by_field_name("body") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "loop missing body"));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::Loop(Box::new(self.map_expr(body, scope, d)?)),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_break_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let val = self.find_child_expr(node, scope, d)?;
+        Some(Expr {
+            kind: ExprKind::Break(val),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_return_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let val = self.find_child_expr(node, scope, d)?;
+        Some(Expr {
+            kind: ExprKind::Return(val),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_array_lit(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let elems = self.collect_child_exprs(node, scope, d)?;
+        Some(Expr {
+            kind: ExprKind::Array(elems),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_assign_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(lhs) = node.child_by_field_name("lhs") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "assign missing lhs"));
+            return None;
+        };
+        let Some(rhs) = node.child_by_field_name("rhs") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "assign missing rhs"));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::Assign(
+                Box::new(self.map_expr(lhs, scope, d)?),
+                Box::new(self.map_expr(rhs, scope, d)?),
+            ),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_borrow_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(kind_node) = node.child_by_field_name("kind") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "borrow missing kind"));
+            return None;
+        };
+        let ref_kind = match self.get_text(kind_node) {
+            "&" => RefKind::Shared,
+            "&mut" => RefKind::Mut,
+            "&out" => RefKind::Out,
+            "&drop" => RefKind::Drop,
+            "&uninit" => RefKind::Uninit,
+            other => {
+                d.push_error(self.diag(
+                    kind_node,
+                    ParserCode::MalformedCst,
+                    format!("unknown borrow kind: {}", other),
+                ));
+                return None;
+            }
+        };
+        let Some(target) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "borrow missing target",
+            ));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::Borrow(ref_kind, Box::new(self.map_expr(target, scope, d)?)),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_raw_borrow_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(target) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "&raw missing target"));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::RawBorrow(Box::new(self.map_expr(target, scope, d)?)),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_unary_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(operand) = node.child_by_field_name("operand") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "unary expression missing operand",
+            ));
+            return None;
+        };
+        let Some(op_node) = node.child_by_field_name("op") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "unary expression missing op",
+            ));
+            return None;
+        };
+        let op = match self.get_text(op_node) {
+            "-" => UnOp::Neg,
+            other => {
+                d.push_error(self.diag(
+                    op_node,
+                    ParserCode::MalformedCst,
+                    format!("unknown unary operator: {}", other),
+                ));
+                return None;
+            }
+        };
+        Some(Expr {
+            kind: ExprKind::Unary(op, Box::new(self.map_expr(operand, scope, d)?)),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_binary_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(lhs) = node.child_by_field_name("lhs") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "binary expression missing lhs",
+            ));
+            return None;
+        };
+        let Some(op_node) = node.child_by_field_name("op") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "binary expression missing op",
+            ));
+            return None;
+        };
+        let Some(rhs) = node.child_by_field_name("rhs") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "binary expression missing rhs",
+            ));
+            return None;
+        };
+        let op = match self.get_text(op_node) {
+            "+" => BinOp::Add,
+            "-" => BinOp::Sub,
+            "*" => BinOp::Mul,
+            "/" => BinOp::Div,
+            "%" => BinOp::Rem,
+            "==" => BinOp::Eq,
+            "!=" => BinOp::Ne,
+            "<" => BinOp::Lt,
+            "<=" => BinOp::Le,
+            ">" => BinOp::Gt,
+            ">=" => BinOp::Ge,
+            other => {
+                d.push_error(self.diag(
+                    op_node,
+                    ParserCode::MalformedCst,
+                    format!("unknown binary operator: {}", other),
+                ));
+                return None;
+            }
+        };
+        Some(Expr {
+            kind: ExprKind::Binary(
+                Box::new(self.map_expr(lhs, scope, d)?),
+                op,
+                Box::new(self.map_expr(rhs, scope, d)?),
+            ),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_field_access(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(target) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "field access missing target",
+            ));
+            return None;
+        };
+        let Some(field) = node.child_by_field_name("field") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "field access missing field",
+            ));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::FieldAccess(
+                Box::new(self.map_expr(target, scope, d)?),
+                self.get_text(field).to_string(),
+            ),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_deref_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(target) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "deref missing target"));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::Deref(Box::new(self.map_expr(target, scope, d)?)),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_cast_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(target) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "cast missing target"));
+            return None;
+        };
+        let Some(ty_node) = node.child_by_field_name("ty") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "cast missing type"));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::Cast(
+                Box::new(self.map_expr(target, scope, d)?),
+                self.map_type(ty_node, scope, d)?,
+            ),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_call_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(func) = node.child_by_field_name("function") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "call missing function",
+            ));
+            return None;
+        };
+        // Generic calls parse as `call_expr(instantiation_expr(f, <T>), args)`
+        // — unwrap the inner instantiation_expr to lift the type args
+        // onto the call's generics slot.
+        let (func_node, generics) = if func.kind() == "instantiation_expr" {
+            let Some(inner_fn) = func.child_by_field_name("function") else {
+                d.push_error(self.diag(
+                    func,
+                    ParserCode::MalformedCst,
+                    "instantiation missing function",
+                ));
+                return None;
+            };
+            let Some(type_args_node) = func.child_by_field_name("type_args") else {
+                d.push_error(self.diag(
+                    func,
+                    ParserCode::MalformedCst,
+                    "instantiation missing type_args",
+                ));
+                return None;
+            };
+            let (lifetimes, types) = self.map_type_args(type_args_node, scope, d)?;
+            (inner_fn, GenericArgs { lifetimes, types })
+        } else {
+            (func, GenericArgs::empty())
+        };
+        let target = if func_node.kind() == "field_access" {
+            let Some(receiver) = func_node.child_by_field_name("target") else {
+                d.push_error(self.diag(
+                    func_node,
+                    ParserCode::MalformedCst,
+                    "receiver call missing receiver",
+                ));
+                return None;
+            };
+            let Some(method) = func_node.child_by_field_name("field") else {
+                d.push_error(self.diag(
+                    func_node,
+                    ParserCode::MalformedCst,
+                    "receiver call missing method",
+                ));
+                return None;
+            };
+            CallTarget::Receiver {
+                receiver: Box::new(self.map_expr(receiver, scope, d)?),
+                method: self.get_text(method).to_string(),
+                method_source: SourceInfo::written(span_of(method)),
+                selector_source: SourceInfo::written(span_of(func_node)),
+            }
+        } else if func_node.kind() == "qualified_method" {
+            let Some(self_ty) = func_node.child_by_field_name("self_ty") else {
+                d.push_error(self.diag(
+                    func_node,
+                    ParserCode::MalformedCst,
+                    "qualified method missing self type",
+                ));
+                return None;
+            };
+            let Some(method) = func_node.child_by_field_name("method_name") else {
+                d.push_error(self.diag(
+                    func_node,
+                    ParserCode::MalformedCst,
+                    "qualified method missing method name",
+                ));
+                return None;
+            };
+            let trait_path = if let Some(trait_name) =
+                func_node.child_by_field_name("trait_name")
+            {
+                let (lifetimes, types) =
+                    if let Some(trait_args) = func_node.child_by_field_name("trait_args") {
+                        self.map_type_args(trait_args, scope, d)?
+                    } else {
+                        (Vec::new(), Vec::new())
+                    };
+                Some(Instance::new(self.get_text(trait_name), lifetimes, types))
+            } else {
+                None
+            };
+            CallTarget::Qualified {
+                self_ty: self.map_type(self_ty, scope, d)?,
+                trait_path,
+                method: self.get_text(method).to_string(),
+                method_source: SourceInfo::written(span_of(method)),
+                selector_source: SourceInfo::written(span_of(func_node)),
+            }
+        } else if func_node.kind() == "scoped_identifier" {
+            let Some(target_name) = func_node.child_by_field_name("target_name") else {
+                d.push_error(self.diag(
+                    func_node,
+                    ParserCode::MalformedCst,
+                    "scoped identifier missing target name",
+                ));
+                return None;
+            };
+            let target_text = self.get_text(target_name);
+            let resolved_target_name = self.resolve_constructor_name(target_text, scope);
+            let target_ty = Type::new(
+                TypeKind::Custom(Instance::new(resolved_target_name, Vec::new(), Vec::new())),
+                SourceInfo::written(span_of(target_name)),
+            );
+            let Some(member) = func_node.child_by_field_name("name") else {
+                d.push_error(self.diag(
+                    func_node,
+                    ParserCode::MalformedCst,
+                    "scoped identifier missing member name",
+                ));
+                return None;
+            };
+            CallTarget::Path {
+                target: target_ty,
+                member: self.get_text(member).to_string(),
+                member_source: SourceInfo::written(span_of(member)),
+                selector_source: SourceInfo::written(span_of(func_node)),
+            }
+        } else {
+            CallTarget::Expr(Box::new(self.map_expr(func_node, scope, d)?))
+        };
+        let mut cursor = node.walk();
+        let mut args = Vec::new();
+        for c in node.children(&mut cursor) {
+            if c != func && self.is_expr_kind(&c) {
+                args.push(self.map_expr(c, scope, d)?);
+            }
+        }
+        Some(Expr {
+            kind: ExprKind::Call(target, generics, args),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_index_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let Some(target) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "index missing target"));
+            return None;
+        };
+        let Some(idx) = node.child_by_field_name("index") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "index missing index"));
+            return None;
+        };
+        Some(Expr {
+            kind: ExprKind::ArrayIndex(
+                Box::new(self.map_expr(target, scope, d)?),
+                Box::new(self.map_expr(idx, scope, d)?),
+            ),
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_lambda_expr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+        let mut params = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "lambda_param" {
+                if let Some(param) = self.map_lambda_param(child, scope, d) {
+                    params.push(param);
+                }
+            }
+        }
+        let ret_ty = if let Some(ret_node) = node.child_by_field_name("return_type") {
+            self.map_type(ret_node, scope, d)
+        } else {
+            None
+        };
+        let Some(body_node) = node.child_by_field_name("body") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "lambda missing body expression",
+            ));
+            return None;
+        };
+        let body = self.map_expr(body_node, scope, d)?;
+        Some(Expr {
+            kind: ExprKind::Lambda {
+                params,
+                ret_ty,
+                body: Box::new(body),
+            },
+            source: SourceInfo::written(span_of(node)),
+        })
     }
 
     fn map_block(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
@@ -2218,40 +2279,33 @@ impl Parser {
     /// Callers canonicalize via `Markers::from_iter` or `Markers::from_declared`
     /// (the latter also flags redundant Move for an info diagnostic).
     fn map_marker_tokens(&self, node: Node, d: &mut Diagnostics) -> Option<Vec<Marker>> {
-        let mut seen: Vec<Marker> = Vec::new();
-        let mut marker_spans: std::collections::HashMap<Marker, Span> = std::collections::HashMap::new();
+        let mut seen = Vec::new();
+        let mut tracker = DuplicateTracker::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() != "marker" {
                 continue;
             }
             let text = self.get_text(child);
-            let m = match text {
-                "Copy" => Marker::Copy,
-                "Drop" => Marker::Drop,
-                "Move" => Marker::Move,
-                other => {
-                    d.push_error(self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        format!("unknown marker: {}", other),
-                    ));
-                    return None;
-                }
+            let Some(m) = Marker::from_name(text) else {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("unknown marker: {}", text),
+                ));
+                return None;
             };
-            if let Some(prev_span) = marker_spans.get(&m) {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::DuplicateMarker,
-                        format!("duplicate marker '{}'", text),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous '{}' marker here", text))
-                    .with_hint("remove the redundant marker"),
-                );
+            if !tracker.check_unique(
+                m,
+                SourceInfo::written(span_of(child)),
+                ParserCode::DuplicateMarker,
+                format!("duplicate marker '{}'", text),
+                format!("previous '{}' marker here", text),
+                Some("remove the redundant marker"),
+                d,
+            ) {
                 return None;
             }
-            marker_spans.insert(m, span_of(child));
             seen.push(m);
         }
         Some(seen)

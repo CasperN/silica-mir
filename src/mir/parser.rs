@@ -1,4 +1,4 @@
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, DuplicateTracker};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use tree_sitter::{Node, Parser as TSParser};
@@ -1410,6 +1410,30 @@ impl Parser {
         Some((lifetimes, types))
     }
 
+    /// Parse a `lifetime_param` node and its outlives bounds.
+    fn map_lifetime_param(
+        &self,
+        node: Node,
+        d: &mut Diagnostics,
+    ) -> Option<(LifetimeParam, Vec<OutlivesBound>)> {
+        let Some(name_node) = node.child_by_field_name("name") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "lifetime param missing name"));
+            return None;
+        };
+        let subject = Lifetime(self.get_text(name_node).trim_start_matches('\'').to_string());
+        let mut outlives = Vec::new();
+        let mut bcursor = node.walk();
+        for bound_node in node.children_by_field_name("bound", &mut bcursor) {
+            let bound = Lifetime(self.get_text(bound_node).trim_start_matches('\'').to_string());
+            outlives.push(OutlivesBound::written(
+                subject.clone(),
+                bound,
+                span_of(bound_node),
+            ));
+        }
+        Some((LifetimeParam::written(subject, span_of(node)), outlives))
+    }
+
     /// Parse a `type_params` node (`<'a, 'b: 'a, T, U: Copy + Drop>`)
     /// into (lifetime_params, type_params, outlives). Side-effects:
     /// pushes each type-param name into `type_scope` for subsequent
@@ -1424,7 +1448,8 @@ impl Parser {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut outlives = Vec::new();
-        let mut declared_here: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
+        let mut declared_here: Vec<String> = Vec::new();
+        let mut tracker = DuplicateTracker::new();
         let mut pre_cursor = node.walk();
         for child in node
             .children(&mut pre_cursor)
@@ -1438,16 +1463,15 @@ impl Parser {
             if self.reject_self_ident(&name, name_node, "a type-parameter name", d) {
                 return None;
             }
-            if let Some(prev_span) = declared_here.get(&name) {
-                d.push_error(
-                    self.diag(
-                        name_node,
-                        ParserCode::DuplicateTypeParam,
-                        format!("duplicate type parameter '{}'", name),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous declaration of '{}' here", name))
-                    .with_hint("type parameters within the same declaration must have unique names"),
-                );
+            if !tracker.check_unique(
+                name.clone(),
+                SourceInfo::written(span_of(name_node)),
+                ParserCode::DuplicateTypeParam,
+                format!("duplicate type parameter '{}'", name),
+                format!("previous declaration of '{}' here", name),
+                Some("type parameters within the same declaration must have unique names"),
+                d,
+            ) {
                 return None;
             }
             if self.type_scope.borrow().contains(&name) {
@@ -1461,43 +1485,16 @@ impl Parser {
                 );
                 return None;
             }
-            declared_here.insert(name.clone(), span_of(name_node));
+            declared_here.push(name);
         }
-        self.type_scope.borrow_mut().extend(declared_here.into_keys());
+        self.type_scope.borrow_mut().extend(declared_here);
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "lifetime_param" => {
-                    // `field('name', $.lifetime)` on the param; every
-                    // `field('bound', $.lifetime)` after `:` is an
-                    // outlives axiom `subject outlives bound`.
-                    let Some(name_node) = child.child_by_field_name("name") else {
-                        d.push_error(self.diag(
-                            child,
-                            ParserCode::MalformedCst,
-                            "lifetime param missing name",
-                        ));
-                        return None;
-                    };
-                    let subject = Lifetime(
-                        self.get_text(name_node)
-                            .trim_start_matches('\'')
-                            .to_string(),
-                    );
-                    lifetimes.push(LifetimeParam::written(subject.clone(), span_of(child)));
-                    let mut bcursor = child.walk();
-                    for bound_node in child.children_by_field_name("bound", &mut bcursor) {
-                        let bound = Lifetime(
-                            self.get_text(bound_node)
-                                .trim_start_matches('\'')
-                                .to_string(),
-                        );
-                        outlives.push(OutlivesBound::written(
-                            subject.clone(),
-                            bound,
-                            span_of(bound_node),
-                        ));
-                    }
+                    let (param, bounds) = self.map_lifetime_param(child, d)?;
+                    lifetimes.push(param);
+                    outlives.extend(bounds);
                 }
                 "type_param" => {
                     let Some(name_node) = child.child_by_field_name("name") else {
@@ -1533,8 +1530,10 @@ impl Parser {
     }
 
     fn map_trait_bounds(&self, node: Node, d: &mut Diagnostics) -> Option<Bounds> {
-        let mut marker_bounds: Vec<(Marker, Span)> = Vec::new();
-        let mut trait_bounds: Vec<TraitBound> = Vec::new();
+        let mut marker_bounds = Vec::new();
+        let mut trait_bounds = Vec::new();
+        let mut marker_tracker = DuplicateTracker::new();
+        let mut trait_tracker = DuplicateTracker::new();
         let mut cursor = node.walk();
         for bound in node.children_by_field_name("bound", &mut cursor) {
             let Some(trait_name) = bound.child_by_field_name("name") else {
@@ -1558,50 +1557,42 @@ impl Parser {
             } else {
                 (Vec::new(), Vec::new())
             };
-            let marker = (lifetime_args.is_empty() && type_args.is_empty())
-                .then(|| match name.as_str() {
-                    "Copy" => Some(Marker::Copy),
-                    "Drop" => Some(Marker::Drop),
-                    "Move" => Some(Marker::Move),
-                    _ => None,
-                })
-                .flatten();
-            if let Some(marker) = marker {
-                if let Some((_, prev_span)) = marker_bounds.iter().find(|(m, _)| *m == marker) {
-                    d.push_error(
-                        self.diag(
-                            bound,
-                            ParserCode::DuplicateMarker,
-                            format!("duplicate marker '{}'", name),
-                        )
-                        .with_secondary(SourceInfo::written(*prev_span), format!("previous '{}' marker here", name))
-                        .with_hint("remove the redundant marker"),
-                    );
-                    return None;
+            if lifetime_args.is_empty() && type_args.is_empty() {
+                if let Some(marker) = Marker::from_name(&name) {
+                    if !marker_tracker.check_unique(
+                        marker,
+                        SourceInfo::written(span_of(bound)),
+                        ParserCode::DuplicateMarker,
+                        format!("duplicate marker '{}'", name),
+                        format!("previous '{}' marker here", name),
+                        Some("remove the redundant marker"),
+                        d,
+                    ) {
+                        return None;
+                    }
+                    marker_bounds.push(marker);
+                    continue;
                 }
-                marker_bounds.push((marker, span_of(bound)));
-                continue;
             }
             let trait_bound = TraitBound {
                 trait_path: Instance::new(name, lifetime_args, type_args),
                 source: SourceInfo::written(span_of(bound)),
             };
-            if let Some(prev) = trait_bounds.iter().find(|tb| tb.trait_path == trait_bound.trait_path) {
-                d.push_error(
-                    self.diag(
-                        bound,
-                        ParserCode::DuplicateTraitBound,
-                        format!("duplicate trait bound '{}'", trait_bound.trait_path),
-                    )
-                    .with_secondary(prev.source, format!("previous bound on '{}' here", trait_bound.trait_path))
-                    .with_hint("remove the redundant trait bound"),
-                );
+            if !trait_tracker.check_unique(
+                trait_bound.trait_path.to_string(),
+                trait_bound.source,
+                ParserCode::DuplicateTraitBound,
+                format!("duplicate trait bound '{}'", trait_bound.trait_path),
+                format!("previous bound on '{}' here", trait_bound.trait_path),
+                Some("remove the redundant trait bound"),
+                d,
+            ) {
                 return None;
             }
             trait_bounds.push(trait_bound);
         }
         Some(Bounds {
-            markers: Markers::from_iter(marker_bounds.into_iter().map(|(m, _)| m)),
+            markers: Markers::from_iter(marker_bounds),
             traits: trait_bounds,
         })
     }
@@ -1613,40 +1604,33 @@ impl Parser {
     /// the pre-canonicalization shape (e.g. redundant Move) inspect the
     /// vec first.
     fn map_marker_tokens(&self, node: Node, d: &mut Diagnostics) -> Option<Vec<Marker>> {
-        let mut seen: Vec<Marker> = Vec::new();
-        let mut marker_spans: std::collections::HashMap<Marker, Span> = std::collections::HashMap::new();
+        let mut seen = Vec::new();
+        let mut tracker = DuplicateTracker::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() != "marker" {
                 continue;
             }
             let text = self.get_text(child);
-            let m = match text {
-                "Copy" => Marker::Copy,
-                "Drop" => Marker::Drop,
-                "Move" => Marker::Move,
-                other => {
-                    d.push_error(self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        format!("unknown marker: {}", other),
-                    ));
-                    return None;
-                }
+            let Some(m) = Marker::from_name(text) else {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("unknown marker: {}", text),
+                ));
+                return None;
             };
-            if let Some(prev_span) = marker_spans.get(&m) {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::DuplicateMarker,
-                        format!("duplicate marker '{}'", text),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous '{}' marker here", text))
-                    .with_hint("remove the redundant marker"),
-                );
+            if !tracker.check_unique(
+                m,
+                SourceInfo::written(span_of(child)),
+                ParserCode::DuplicateMarker,
+                format!("duplicate marker '{}'", text),
+                format!("previous '{}' marker here", text),
+                Some("remove the redundant marker"),
+                d,
+            ) {
                 return None;
             }
-            marker_spans.insert(m, span_of(child));
             seen.push(m);
         }
         Some(seen)
@@ -1867,7 +1851,7 @@ impl Parser {
         let trait_scope: std::collections::BTreeSet<String> = self.type_scope.borrow().clone();
 
         let mut methods: Vec<Function> = Vec::new();
-        let mut seen_names: std::collections::HashMap<String, Span> = Default::default();
+        let mut seen_names = DuplicateTracker::new();
         for child in node.children(&mut cursor) {
             if child.kind() != "function_decl" {
                 continue;
@@ -1893,19 +1877,17 @@ impl Parser {
                 ));
                 continue;
             }
-            if let Some(prev_span) = seen_names.get(&f.meta.name) {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::DuplicateMethod,
-                        format!("duplicate trait method '{}'", f.meta.name),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous declaration of '{}' here", f.meta.name))
-                    .with_hint("method names within the same trait must be unique"),
-                );
+            if !seen_names.check_unique(
+                f.meta.name.clone(),
+                SourceInfo::written(span_of(child)),
+                ParserCode::DuplicateMethod,
+                format!("duplicate trait method '{}'", f.meta.name),
+                format!("previous declaration of '{}' here", f.meta.name),
+                Some("method names within the same trait must be unique"),
+                d,
+            ) {
                 continue;
             }
-            seen_names.insert(f.meta.name.clone(), span_of(child));
             methods.push(f);
         }
         self.type_scope.borrow_mut().clear();
@@ -1996,7 +1978,7 @@ impl Parser {
         let impl_scope: std::collections::BTreeSet<String> = self.type_scope.borrow().clone();
 
         let mut methods: Vec<Function> = Vec::new();
-        let mut seen_names: std::collections::HashMap<String, Span> = Default::default();
+        let mut seen_names = DuplicateTracker::new();
         for child in node.children(&mut cursor) {
             if child.kind() != "function_decl" {
                 continue;
@@ -2022,19 +2004,17 @@ impl Parser {
                 ));
                 continue;
             }
-            if let Some(prev_span) = seen_names.get(&f.meta.name) {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::DuplicateMethod,
-                        format!("duplicate impl method '{}'", f.meta.name),
-                    )
-                    .with_secondary(SourceInfo::written(*prev_span), format!("previous definition of '{}' here", f.meta.name))
-                    .with_hint("method names within the same impl block must be unique"),
-                );
+            if !seen_names.check_unique(
+                f.meta.name.clone(),
+                SourceInfo::written(span_of(child)),
+                ParserCode::DuplicateMethod,
+                format!("duplicate impl method '{}'", f.meta.name),
+                format!("previous definition of '{}' here", f.meta.name),
+                Some("method names within the same impl block must be unique"),
+                d,
+            ) {
                 continue;
             }
-            seen_names.insert(f.meta.name.clone(), span_of(child));
             methods.push(f);
         }
         self.type_scope.borrow_mut().clear();

@@ -179,6 +179,66 @@ impl Diagnostic {
     }
 }
 
+/// Helper to track unique items (by key) within a scope and emit structured
+/// diagnostics with secondary spans and hints upon encountering duplicates.
+#[derive(Debug, Clone, Default)]
+pub struct DuplicateTracker<K = String> {
+    seen: std::collections::HashMap<K, SourceInfo>,
+}
+
+impl<K: std::hash::Hash + Eq + Clone> DuplicateTracker<K> {
+    pub fn new() -> Self {
+        Self {
+            seen: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Check whether `key` is unique. If it has already been registered, emits an error
+    /// diagnostic with `code`, `message`, a secondary span referencing the previous declaration,
+    /// and an optional `hint`, then returns `false`. Otherwise records `source` and returns `true`.
+    pub fn check_unique(
+        &mut self,
+        key: K,
+        source: SourceInfo,
+        code: impl Into<DiagCode>,
+        message: impl Into<String>,
+        previous_label: impl Into<String>,
+        hint: Option<&str>,
+        d: &mut Diagnostics,
+    ) -> bool {
+        self.check_unique_in(key, source, code, message, previous_label, hint, None, d)
+    }
+
+    /// Like [`check_unique`], but attaches an enclosing `function` name context to the diagnostic.
+    pub fn check_unique_in(
+        &mut self,
+        key: K,
+        source: SourceInfo,
+        code: impl Into<DiagCode>,
+        message: impl Into<String>,
+        previous_label: impl Into<String>,
+        hint: Option<&str>,
+        function: Option<&str>,
+        d: &mut Diagnostics,
+    ) -> bool {
+        if let Some(prev_source) = self.seen.get(&key) {
+            let mut diag = Diagnostic::new(code, source, message)
+                .with_secondary(*prev_source, previous_label);
+            if let Some(h) = hint {
+                diag = diag.with_hint(h);
+            }
+            if let Some(func) = function {
+                diag = diag.in_function(func);
+            }
+            d.push_error(diag);
+            false
+        } else {
+            self.seen.insert(key, source);
+            true
+        }
+    }
+}
+
 /// Which surface language the diagnostics apply to. Controls
 /// user-facing rendering choices — HLL users don't know about MIR
 /// concepts like basic blocks, so those get suppressed for `Hll`.

@@ -10,7 +10,7 @@ use super::TypeCheckCode;
 use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::common::{GeneratedKind, Lifetime, LifetimeParam};
-use crate::diagnostics::{Diagnostic, Diagnostics};
+use crate::diagnostics::{Diagnostic, Diagnostics, DuplicateTracker};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
 use crate::mir::env::{
@@ -389,24 +389,21 @@ impl IndexedProgram {
                 d,
             );
             let lt_scope = lifetime_scope(&meta.params.lifetime_params);
-            let mut seen: HashMap<&str, SourceInfo> = HashMap::new();
+            let mut seen = DuplicateTracker::new();
             for (name, ty, source) in items {
-                if let Some(prev_source) = seen.get(name) {
-                    d.push_error(
-                        Diagnostic::new(
-                            duplicate_code,
-                            source,
-                            format!(
-                                "In {} '{}', {} '{}' is declared more than once",
-                                container_kind, meta.name, item_kind, name
-                            ),
-                        )
-                        .with_secondary(*prev_source, format!("previous declaration of {} '{}' here", item_kind, name))
-                        .with_hint(format!("{} {}s must have unique names", container_kind, item_kind)),
-                    );
-                } else {
-                    seen.insert(name, source);
-                }
+                let duplicate_hint = format!("{} {}s must have unique names", container_kind, item_kind);
+                seen.check_unique(
+                    name.to_string(),
+                    source,
+                    duplicate_code,
+                    format!(
+                        "In {} '{}', {} '{}' is declared more than once",
+                        container_kind, meta.name, item_kind, name
+                    ),
+                    format!("previous declaration of {} '{}' here", item_kind, name),
+                    Some(&duplicate_hint),
+                    d,
+                );
                 if let Err(e) = LocalEnv::for_decl(self, &meta.params).validate_type(ty) {
                     d.push_error(validation_diagnostic(
                         e,

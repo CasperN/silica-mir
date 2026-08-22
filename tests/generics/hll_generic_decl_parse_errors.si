@@ -1,0 +1,52 @@
+# Parse-time rejections of ill-formed generic declarations and markers in HLL.
+# Each cell isolates one shape and pins the exact PARSE-* diagnostic.
+
+# covers: duplicate type parameter on struct
+struct DupStructTypeParam<T, T>: Drop {
+  x: T,
+}
+
+# covers: duplicate type parameter on enum
+enum DupEnumTypeParam<T, T>: Drop {
+  A: T,
+}
+
+# covers: duplicate type parameter on function
+fn dup_fn_type_param<T, T>(x: T) {
+  ()
+}
+
+# covers: duplicate marker on struct
+struct DupStructMarker: Copy + Copy {
+  x: i64,
+}
+
+# covers: duplicate marker on enum
+enum DupEnumMarker: Drop + Drop {
+  A: (),
+}
+
+# covers: duplicate marker in generic bounds
+fn dup_marker_in_bounds<T: Copy + Copy>(x: T) {
+  ()
+}
+
+# covers: duplicate trait bound on type parameter
+trait SimpleTrait {
+  fn m(recv: &Self);
+}
+
+fn dup_trait_in_bounds<T: SimpleTrait + SimpleTrait>(x: &T) {
+  ()
+}
+
+# covers: duplicate trait bound on struct type parameter
+struct DupTraitBoundStruct<T: SimpleTrait + SimpleTrait>: Drop {
+  x: &T,
+}
+
+# covers: generic parameter on method shadows enclosing trait generic parameter
+trait ShadowingTrait<T> {
+  fn shadow<T>(recv: &Self);
+}
+

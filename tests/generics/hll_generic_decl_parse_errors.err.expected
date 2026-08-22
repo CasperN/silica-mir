@@ -1,0 +1,72 @@
+error: at 5:30: [PARSE-DuplicateTypeParam] duplicate type parameter 'T'
+   |
+ 4 | # covers: duplicate type parameter on struct
+ 5 | struct DupStructTypeParam<T, T>: Drop {
+   |                           -  ^ previous declaration of 'T' here
+ 6 |   x: T,
+   |
+  hint: type parameters within the same declaration must have unique names
+error: at 10:26: [PARSE-DuplicateTypeParam] duplicate type parameter 'T'
+    |
+  9 | # covers: duplicate type parameter on enum
+ 10 | enum DupEnumTypeParam<T, T>: Drop {
+    |                       -  ^ previous declaration of 'T' here
+ 11 |   A: T,
+    |
+  hint: type parameters within the same declaration must have unique names
+error: at 15:25: [PARSE-DuplicateTypeParam] In function 'dup_fn_type_param': duplicate type parameter 'T'
+    |
+ 14 | # covers: duplicate type parameter on function
+ 15 | fn dup_fn_type_param<T, T>(x: T) {
+    |                      -  ^ previous declaration of 'T' here
+ 16 |   ()
+    |
+  hint: type parameters within the same declaration must have unique names
+error: at 20:32: [PARSE-DuplicateMarker] duplicate marker 'Copy'
+    |
+ 19 | # covers: duplicate marker on struct
+ 20 | struct DupStructMarker: Copy + Copy {
+    |                         ----   ^^^^ previous 'Copy' marker here
+ 21 |   x: i64,
+    |
+  hint: remove the redundant marker
+error: at 25:28: [PARSE-DuplicateMarker] duplicate marker 'Drop'
+    |
+ 24 | # covers: duplicate marker on enum
+ 25 | enum DupEnumMarker: Drop + Drop {
+    |                     ----   ^^^^ previous 'Drop' marker here
+ 26 |   A: (),
+    |
+  hint: remove the redundant marker
+error: at 30:35: [PARSE-DuplicateMarker] In function 'dup_marker_in_bounds': duplicate marker 'Copy'
+    |
+ 29 | # covers: duplicate marker in generic bounds
+ 30 | fn dup_marker_in_bounds<T: Copy + Copy>(x: T) {
+    |                            ----   ^^^^ previous 'Copy' marker here
+ 31 |   ()
+    |
+  hint: remove the redundant marker
+error: at 39:41: [PARSE-DuplicateTraitBound] In function 'dup_trait_in_bounds': duplicate trait bound 'SimpleTrait'
+    |
+ 38 | 
+ 39 | fn dup_trait_in_bounds<T: SimpleTrait + SimpleTrait>(x: &T) {
+    |                           -----------   ^^^^^^^^^^^ previous bound on 'SimpleTrait' here
+ 40 |   ()
+    |
+  hint: remove the redundant trait bound
+error: at 44:45: [PARSE-DuplicateTraitBound] duplicate trait bound 'SimpleTrait'
+    |
+ 43 | # covers: duplicate trait bound on struct type parameter
+ 44 | struct DupTraitBoundStruct<T: SimpleTrait + SimpleTrait>: Drop {
+    |                               -----------   ^^^^^^^^^^^ previous bound on 'SimpleTrait' here
+ 45 |   x: &T,
+    |
+  hint: remove the redundant trait bound
+error: at 50:13: [PARSE-DuplicateTypeParam] In function 'ShadowingTrait::shadow': type parameter 'T' shadows an enclosing type parameter with the same name
+    |
+ 49 | trait ShadowingTrait<T> {
+ 50 |   fn shadow<T>(recv: &Self);
+    |             ^
+ 51 | }
+    |
+  hint: choose a different name for this type parameter
