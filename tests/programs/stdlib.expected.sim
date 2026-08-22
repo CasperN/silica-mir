@@ -144,6 +144,92 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
   }
 }
 
+impl<T: AutoClone> AutoClone for Box<T> {
+  fn clone<'s0, 's1>(self: &'s0 Box<T>, $return: &'s1 out Box<T>) {
+    $tmp_0: $closure_0<'s0, T>;
+    $tmp_1: &out Box<T>;
+    entry:
+      $tmp_0.$call = $closure_0_call<T>;
+      $tmp_0.$cap_self = move self;
+      $tmp_1 = &out $return.*;
+      call <Box<T>>::new_in_place<$closure_0<'s0, T>>(move $tmp_0, move $tmp_1);
+      unborrow $return;
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      require_uninit self;
+      return
+  }
+}
+
+struct $closure_0<'s0, T: AutoClone>: Copy + Drop {
+  $call: fn(&$closure_0<'s0, T>, $return: &out T)
+  $cap_self: &'s0 Box<T>
+}
+
+fn $closure_0_call<'s0, 's1, 's2, T: AutoClone>(recv: &'s1 $closure_0<'s0, T>, $return: &'s2 out T) {
+  $tmp_0: &T;
+  $tmp_1: &Box<T>;
+  $tmp_2: &out &T;
+  $tmp_3: &T;
+  $tmp_4: &out T;
+  entry:
+    $tmp_1 = &recv.*.$cap_self.*;
+    $tmp_2 = &out $tmp_0;
+    call <Box<T>>::get(move $tmp_1, move $tmp_2);
+    $tmp_3 = &$tmp_0.*;
+    $tmp_4 = &out $return.*;
+    call <T as AutoClone>::clone(move $tmp_3, move $tmp_4);
+    unborrow $return;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl<'s0, T: AutoClone> FnOnce<$Tuple0, T> for $closure_0<'s0, T> {
+  fn call_once<'s1>(recv: $closure_0<'s0, T>, args: $Tuple0, $return: &'s1 out T) {
+    $tmp_recv: &$closure_0<'s0, T>;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_0_call<T>(move $tmp_recv, move $return);
+      drop recv;
+      require_uninit recv;
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+impl<'s0, T: AutoClone> FnMut<$Tuple0, T> for $closure_0<'s0, T> {
+  fn call_mut<'s1, 's2>(recv: &'s1 mut $closure_0<'s0, T>, args: $Tuple0, $return: &'s2 out T) {
+    $tmp_recv: &$closure_0<'s0, T>;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_0_call<T>(move $tmp_recv, move $return);
+      drop args;
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl<'s0, T: AutoClone> Fn<$Tuple0, T> for $closure_0<'s0, T> {
+  fn call<'s1, 's2>(recv: &'s1 $closure_0<'s0, T>, args: $Tuple0, $return: &'s2 out T) {
+    entry:
+      call $closure_0_call<T>(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
 struct PhantomData<'a, T>: Copy + Drop {
 }
 

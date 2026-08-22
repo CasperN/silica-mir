@@ -1,0 +1,372 @@
+struct NonMovable: Drop {
+  val: i64
+}
+
+impl AutoClone for NonMovable {
+  fn clone<'s0, 's1>(self: &'s0 NonMovable, $return: &'s1 out NonMovable) {
+    entry:
+      $return.*.val = copy self.*.val;
+      unborrow $return;
+      require_uninit $return;
+      drop self;
+      require_uninit self;
+      return
+  }
+}
+
+struct Container<T: Drop + Move>: Drop + Move {
+  item: T
+}
+
+impl<T: Drop + Move> Container<T> {
+  fn new_with<'s0, F: Move + FnOnce<$Tuple0, T>>(builder: F, $return: &'s0 out Container<T>) {
+    $tmp_0: $Tuple0;
+    $tmp_1: &out T;
+    entry:
+      $tmp_0 = $Tuple0 {};
+      $tmp_1 = &out $return.*.item;
+      call <F as FnOnce<$Tuple0, T>>::call_once(move builder, move $tmp_0, move $tmp_1);
+      unborrow $return;
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      require_uninit builder;
+      return
+  }
+}
+
+fn construct_in_place<'s0, T: Drop + Move>(val: T, $return: &'s0 out Container<T>) {
+  $tmp_0: $closure_0<T>;
+  $tmp_1: &out Container<T>;
+  entry:
+    $tmp_0.$call = $closure_0_call<T>;
+    $tmp_0.$cap_val = move val;
+    $tmp_1 = &out $return.*;
+    call <Container<T>>::new_with<$closure_0<T>>(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit val;
+    return
+}
+
+struct $closure_0<T: Drop + Move>: Drop + Move {
+  $call: fn($closure_0<T>, $return: &out T)
+  $cap_val: T
+}
+
+fn $closure_0_call<'s0, T: Drop + Move>($self: $closure_0<T>, $return: &'s0 out T) {
+  entry:
+    $return.* = move $self.$cap_val;
+    unborrow $return;
+    require_uninit $return;
+    drop $self.$call;
+    require_uninit $self;
+    return
+}
+
+impl<T: Drop + Move> FnOnce<$Tuple0, T> for $closure_0<T> {
+  fn call_once<'s0>(recv: $closure_0<T>, args: $Tuple0, $return: &'s0 out T) {
+    entry:
+      call $closure_0_call<T>(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+fn clone_and_wrap<'s0, 's1, T: Drop + Move + AutoClone>(item: &'s0 T, $return: &'s1 out Container<T>) {
+  $tmp_0: $closure_1<'s0, T>;
+  $tmp_1: &out Container<T>;
+  entry:
+    $tmp_0.$call = $closure_1_call<T>;
+    $tmp_0.$cap_item = move item;
+    $tmp_1 = &out $return.*;
+    call <Container<T>>::new_with<$closure_1<'s0, T>>(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit item;
+    return
+}
+
+struct $closure_1<'s0, T: Drop + Move + AutoClone>: Copy + Drop {
+  $call: fn(&$closure_1<'s0, T>, $return: &out T)
+  $cap_item: &'s0 T
+}
+
+fn $closure_1_call<'s0, 's1, 's2, T: Drop + Move + AutoClone>(recv: &'s1 $closure_1<'s0, T>, $return: &'s2 out T) {
+  $tmp_0: &T;
+  $tmp_1: &out T;
+  entry:
+    $tmp_0 = &recv.*.$cap_item.*;
+    $tmp_1 = &out $return.*;
+    call <T as AutoClone>::clone(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl<'s0, T: Drop + Move + AutoClone> FnOnce<$Tuple0, T> for $closure_1<'s0, T> {
+  fn call_once<'s1>(recv: $closure_1<'s0, T>, args: $Tuple0, $return: &'s1 out T) {
+    $tmp_recv: &$closure_1<'s0, T>;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_1_call<T>(move $tmp_recv, move $return);
+      drop recv;
+      require_uninit recv;
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+impl<'s0, T: Drop + Move + AutoClone> FnMut<$Tuple0, T> for $closure_1<'s0, T> {
+  fn call_mut<'s1, 's2>(recv: &'s1 mut $closure_1<'s0, T>, args: $Tuple0, $return: &'s2 out T) {
+    $tmp_recv: &$closure_1<'s0, T>;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_1_call<T>(move $tmp_recv, move $return);
+      drop args;
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl<'s0, T: Drop + Move + AutoClone> Fn<$Tuple0, T> for $closure_1<'s0, T> {
+  fn call<'s1, 's2>(recv: &'s1 $closure_1<'s0, T>, args: $Tuple0, $return: &'s2 out T) {
+    entry:
+      call $closure_1_call<T>(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+fn call_generic_fn<'s0, T: Move, R: Move, F: Drop + Move + Fn<$Tuple1<T>, R>>(f: F, arg: T, $return: &'s0 out R) {
+  $tmp_0: &F;
+  $tmp_1: $Tuple1<T>;
+  $tmp_2: &out R;
+  entry:
+    $tmp_0 = &f;
+    $tmp_1._0 = move arg;
+    $tmp_2 = &out $return.*;
+    call <F as Fn<$Tuple1<T>, R>>::call(move $tmp_0, move $tmp_1, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit arg;
+    drop f;
+    require_uninit f;
+    return
+}
+
+fn duplicate_generic<'s0, T: Drop + Move + AutoClone>(x: T, $return: &'s0 out T) {
+  dup: $closure_2<T>;
+  $tmp_0: &out T;
+  entry:
+    dup.$call = $closure_2_call<T>;
+    $tmp_0 = &out $return.*;
+    call call_generic_fn<T, T, $closure_2<T>>(move dup, move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit dup;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_2<T: Drop + Move + AutoClone>: Copy + Drop {
+  $call: fn(&$closure_2<T>, T, $return: &out T)
+}
+
+fn $closure_2_call<'s0, 's1, T: Drop + Move + AutoClone>(recv: &'s0 $closure_2<T>, v: T, $return: &'s1 out T) {
+  $tmp_0: &T;
+  $tmp_1: &out T;
+  entry:
+    $tmp_0 = &v;
+    $tmp_1 = &out $return.*;
+    call <T as AutoClone>::clone(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop v;
+    require_uninit v;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl<T: Drop + Move + AutoClone> FnOnce<$Tuple1<T>, T> for $closure_2<T> {
+  fn call_once<'s0>(recv: $closure_2<T>, args: $Tuple1<T>, $return: &'s0 out T) {
+    $tmp_recv: &$closure_2<T>;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_2_call<T>(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl<T: Drop + Move + AutoClone> FnMut<$Tuple1<T>, T> for $closure_2<T> {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_2<T>, args: $Tuple1<T>, $return: &'s1 out T) {
+    $tmp_recv: &$closure_2<T>;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_2_call<T>(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl<T: Drop + Move + AutoClone> Fn<$Tuple1<T>, T> for $closure_2<T> {
+  fn call<'s0, 's1>(recv: &'s0 $closure_2<T>, args: $Tuple1<T>, $return: &'s1 out T) {
+    entry:
+      call $closure_2_call<T>(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+struct Wrapper<T: Drop + Move + AutoClone>: Drop + Move {
+  inner: T
+}
+
+impl<T: Drop + Move + AutoClone> Wrapper<T> {
+  fn duplicate<'s0, 's1>(self: &'s0 Wrapper<T>, $return: &'s1 out Container<T>) {
+    $tmp_0: $closure_3<'s0, T>;
+    $tmp_1: &out Container<T>;
+    entry:
+      $tmp_0.$call = $closure_3_call<T>;
+      $tmp_0.$cap_self = move self;
+      $tmp_1 = &out $return.*;
+      call <Container<T>>::new_with<$closure_3<'s0, T>>(move $tmp_0, move $tmp_1);
+      unborrow $return;
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      require_uninit self;
+      return
+  }
+}
+
+struct $closure_3<'s0, T: Drop + Move + AutoClone>: Copy + Drop {
+  $call: fn(&$closure_3<'s0, T>, $return: &out T)
+  $cap_self: &'s0 Wrapper<T>
+}
+
+fn $closure_3_call<'s0, 's1, 's2, T: Drop + Move + AutoClone>(recv: &'s1 $closure_3<'s0, T>, $return: &'s2 out T) {
+  $tmp_0: &T;
+  $tmp_1: &out T;
+  entry:
+    $tmp_0 = &recv.*.$cap_self.*.inner;
+    $tmp_1 = &out $return.*;
+    call <T as AutoClone>::clone(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl<'s0, T: Drop + Move + AutoClone> FnOnce<$Tuple0, T> for $closure_3<'s0, T> {
+  fn call_once<'s1>(recv: $closure_3<'s0, T>, args: $Tuple0, $return: &'s1 out T) {
+    $tmp_recv: &$closure_3<'s0, T>;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_3_call<T>(move $tmp_recv, move $return);
+      drop recv;
+      require_uninit recv;
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+impl<'s0, T: Drop + Move + AutoClone> FnMut<$Tuple0, T> for $closure_3<'s0, T> {
+  fn call_mut<'s1, 's2>(recv: &'s1 mut $closure_3<'s0, T>, args: $Tuple0, $return: &'s2 out T) {
+    $tmp_recv: &$closure_3<'s0, T>;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_3_call<T>(move $tmp_recv, move $return);
+      drop args;
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl<'s0, T: Drop + Move + AutoClone> Fn<$Tuple0, T> for $closure_3<'s0, T> {
+  fn call<'s1, 's2>(recv: &'s1 $closure_3<'s0, T>, args: $Tuple0, $return: &'s2 out T) {
+    entry:
+      call $closure_3_call<T>(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+fn main<'s0>($return: &'s0 out i32) {
+  c: Container<i64>;
+  $tmp_0: &out Container<i64>;
+  v: i64;
+  c2: Container<i64>;
+  $tmp_1: &i64;
+  $tmp_2: &out Container<i64>;
+  d: i64;
+  $tmp_3: &out i64;
+  w: Wrapper<i64>;
+  c3: Container<i64>;
+  $tmp_4: &Wrapper<i64>;
+  $tmp_5: &out Container<i64>;
+  entry:
+    $tmp_0 = &out c;
+    call construct_in_place<i64>(42, move $tmp_0);
+    require_uninit $tmp_0;
+    v = 100;
+    $tmp_1 = &v;
+    $tmp_2 = &out c2;
+    call clone_and_wrap<i64>(move $tmp_1, move $tmp_2);
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    $tmp_3 = &out d;
+    call duplicate_generic<i64>(10, move $tmp_3);
+    require_uninit $tmp_3;
+    w.inner = 5;
+    $tmp_4 = &w;
+    $tmp_5 = &out c3;
+    call <Wrapper<i64>>::duplicate(move $tmp_4, move $tmp_5);
+    require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    $return.* = 0i32;
+    unborrow $return;
+    drop c3;
+    require_uninit c3;
+    drop w;
+    require_uninit w;
+    drop d;
+    require_uninit d;
+    drop c2;
+    require_uninit c2;
+    drop v;
+    require_uninit v;
+    drop c;
+    require_uninit c;
+    require_uninit $return;
+    return
+}

@@ -536,7 +536,7 @@ impl LowerCtx {
     }
 }
 
-fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
+pub(crate) fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
     params
         .iter()
         .map(|p| mir::TypeParam {
@@ -1768,7 +1768,11 @@ fn lower_expr_into(
                 .get(&expr.source)
                 .expect("closure expression missing from typecheck closure map");
             let call_dest = field_place(dest.clone(), "$call");
-            let fn_op = const_op(fn_name_const(closure.fn_name.clone()));
+            let fn_op = const_op(mir::ConstVal::FnName(mir::Instance::new(
+                closure.fn_name.clone(),
+                Vec::new(),
+                closure.type_args.iter().map(lower_type).collect(),
+            )));
             ctx.emit_statement(assign_stmt(call_dest, use_rv(fn_op), expr.span()));
 
             for c in &closure.captures {
@@ -2117,7 +2121,7 @@ fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::D
     let closure_custom = hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
         closure.struct_name.clone(),
         closure.lifetime_args.clone(),
-        Vec::new(),
+        closure.type_args.clone(),
     )));
     let self_param_ty = match closure.fn_kind {
         crate::hll::derive::FnKind::Fn => {
@@ -2156,7 +2160,7 @@ fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::D
             params: GenericParams {
                 lifetime_params: closure.lifetime_params.clone(),
                 outlives: Vec::new(),
-                type_params: Vec::new(),
+                type_params: lower_type_params(&closure.type_params),
                 source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
             },
             markers: closure.markers,
@@ -2174,7 +2178,7 @@ fn lower_closure_function(
     let closure_custom = hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
         closure.struct_name.clone(),
         closure.lifetime_args.clone(),
-        Vec::new(),
+        closure.type_args.clone(),
     )));
     let self_param = match closure.fn_kind {
         crate::hll::derive::FnKind::Fn => mir::Param {
@@ -2232,7 +2236,7 @@ fn lower_closure_function(
         params: GenericParams {
             lifetime_params: closure.lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: lower_type_params(&closure.type_params),
             source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
         },
         markers: trivial_markers(),

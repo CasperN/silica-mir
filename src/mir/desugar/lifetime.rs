@@ -208,6 +208,22 @@ fn desugar_impl(i: &mut ImplBlock, arities: &HashMap<String, usize>) {
             desugar_type_pos(&mut p.ty, Pos::Input, &mut ctx);
         }
         finish_signature_desugar(&mut method.meta, ctx);
+        if let Some(body) = &mut method.body {
+            let mut ctx = DesugarCtx::new_with_extra(
+                &method.meta.params.lifetime_params,
+                &header_lts,
+                arities,
+            );
+            let combined_params: Vec<LifetimeParam> = header_lts
+                .iter()
+                .cloned()
+                .chain(method.meta.params.lifetime_params.iter().cloned())
+                .collect();
+            for local in &mut body.locals {
+                desugar_body_local_ty(&mut local.ty, &combined_params, &mut ctx);
+            }
+            method.meta.params.lifetime_params.extend(ctx.synthesized);
+        }
     }
 }
 

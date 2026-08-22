@@ -12,6 +12,13 @@ error: at 92:3: [HTC-InvalidFnModifiers] In function 'MissingUnsafeTrait::missin
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  93 | }
     |
+error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
+   |
+ 1 | fn test_ambiguous_type() {
+ 2 |   let x = [];
+   |           ^^
+ 3 | }
+   |
 error: at 8:11: [HTC-UndeclaredVariable] In function 'test_silenced_error': undeclared variable 'undeclared_var'
    |
  7 |   # This infers 'x' as TypeKind::Error to poison the local variable.
@@ -152,14 +159,7 @@ error: at 155:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_val
      |     ^^^^^
  156 |   }
      |
-error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
-   |
- 1 | fn test_ambiguous_type() {
- 2 |   let x = [];
-   |           ^^
- 3 | }
-   |
-error: at 160:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
+error: at 160:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
      |
  159 |   fn ambiguous_local(recv: &Self) {
  160 |     let values = [];

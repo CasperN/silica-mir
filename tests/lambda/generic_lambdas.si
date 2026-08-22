@@ -1,0 +1,63 @@
+# Valid end-to-end test cases for generic lambdas and closures.
+
+struct NonMovable: Drop {
+  val: i64,
+}
+
+impl AutoClone for NonMovable {
+  fn clone(&self) -> Self {
+    NonMovable { val: self.*.val }
+  }
+}
+
+struct Container<T: Drop + Move>: Drop + Move {
+  item: T,
+}
+
+impl<T: Drop + Move> Container<T> {
+  fn new_with<F: FnOnce<(), T> + Move>(builder: F) -> Container<T> {
+    Container { item: builder() }
+  }
+}
+
+# covers: generic lambda capturing generic value by move in a generic function
+fn construct_in_place<T: Drop + Move>(val: T) -> Container<T> {
+  Container::new_with(|| val)
+}
+
+# covers: generic lambda invoking trait method on generic parameter
+fn clone_and_wrap<T: AutoClone + Drop + Move>(item: &T) -> Container<T> {
+  Container::new_with(|| item.*.clone())
+}
+
+# covers: higher-order generic function accepting generic Fn
+fn call_generic_fn<T: Move, R: Move, F: Fn<(T,), R> + Drop + Move>(f: F, arg: T) -> R {
+  f(arg)
+}
+
+# covers: generic lambda passed to generic higher-order function
+fn duplicate_generic<T: AutoClone + Drop + Move>(x: T) -> T {
+  let dup = |v: T| v.clone();
+  call_generic_fn(dup, x)
+}
+
+# covers: generic lambda inside generic method capturing &self
+struct Wrapper<T: AutoClone + Drop + Move>: Drop + Move {
+  inner: T,
+}
+
+impl<T: AutoClone + Drop + Move> Wrapper<T> {
+  fn duplicate(&self) -> Container<T> {
+    Container::new_with(|| self.*.inner.clone())
+  }
+}
+
+fn main() -> i32 {
+  let c = construct_in_place(42i64);
+  let v = 100i64;
+  let c2 = clone_and_wrap(&v);
+  let d = duplicate_generic(10i64);
+  let w = Wrapper { inner: 5i64 };
+  let c3 = w.duplicate();
+  0i32
+}

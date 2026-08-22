@@ -12,7 +12,7 @@ error: at 4:3: [HTC-NoSuchField] In function 'test_oob_2_tuple': tuple of length
    |   ^
  5 | }
    |
-error: at 10:3: [HTC-NoSuchField] In function 'test_named_field_on_tuple': tuple type (?i2, ?i3) has no field 'foo'
+error: at 10:3: [HTC-NoSuchField] In function 'test_named_field_on_tuple': tuple type (?i0, ?i1) has no field 'foo'
     |
   9 |   let t = (1, 2);
  10 |   t.foo

@@ -124,7 +124,7 @@ error: at 80:10: [HTC-TypeArgArityMismatch] In function 'let_annotation_bad_arit
     |          ^^^^^^^^^^^^^
  81 | }
     |
-error: at 80:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<?i3>, found Box<i64, i64>
+error: at 80:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
     |
  79 | fn let_annotation_bad_arity() {
  80 |   let x: Box<i64, i64> = Box { inner: 0 };
@@ -172,6 +172,13 @@ error: at 102:59: [HTC-BoundNotSatisfied] In function 'call_explicit_bound_failu
  102 | fn call_explicit_bound_failure(x: DropOnly) -> DropOnly { requires_copy<DropOnly>(x) }
      |                                                           ^^^^^^^^^^^^^
  103 | 
+     |
+error: at 105:38: [HTC-AmbiguousType] In function 'call_unresolved_type_argument': type annotations needed: cannot infer all type arguments for function 'generic_side_effect'
+     |
+ 104 | # covers: inferred type parameter absent from the function signature
+ 105 | fn call_unresolved_type_argument() { generic_side_effect(); }
+     |                                      ^^^^^^^^^^^^^^^^^^^
+ 106 | 
      |
 error: at 108:59: [HTC-GenericArgsOnFunctionValue] In function 'call_generic_args_on_value': explicit generic arguments require a named function
      |
@@ -235,11 +242,4 @@ error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_sati
  150 |   buf.take_copy(lin)
      |       ^^^^^^^^^
  151 | }
-     |
-error: at 105:38: [HTC-AmbiguousType] In function 'call_unresolved_type_argument': type annotations needed: cannot infer all type arguments for function 'generic_side_effect'
-     |
- 104 | # covers: inferred type parameter absent from the function signature
- 105 | fn call_unresolved_type_argument() { generic_side_effect(); }
-     |                                      ^^^^^^^^^^^^^^^^^^^
- 106 | 
      |

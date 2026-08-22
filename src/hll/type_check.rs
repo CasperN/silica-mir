@@ -627,6 +627,7 @@ pub struct TypeEnv {
     /// Type-parameter names → declared bounds for the fn being checked.
     /// Empty outside a fn body.
     current_type_params: HashMap<String, Bounds>,
+    pub(crate) current_generic_params: Vec<TypeParam>,
     current_lifetimes: HashSet<Lifetime>,
     current_function: Option<String>,
     in_unsafe: bool,
@@ -644,6 +645,7 @@ impl TypeEnv {
             closures: HashMap::new(),
             current_ret_ty: None,
             current_type_params: HashMap::new(),
+            current_generic_params: Vec::new(),
             current_lifetimes: HashSet::new(),
             current_function: None,
             in_unsafe: false,
@@ -705,6 +707,15 @@ impl TypeEnv {
 
     pub(crate) fn type_satisfies_trait(&self, ty: &Type, trait_path: &Instance) -> bool {
         type_satisfies_trait_inner(self, ty, trait_path, &HashMap::new(), &mut Vec::new())
+    }
+
+    pub(crate) fn type_satisfies_trait_with_scope(
+        &self,
+        ty: &Type,
+        trait_path: &Instance,
+        scope: &HashMap<String, Bounds>,
+    ) -> bool {
+        type_satisfies_trait_inner(self, ty, trait_path, scope, &mut Vec::new())
     }
 
     /// Substructural class of a type in this environment. Scalars,
@@ -959,7 +970,6 @@ pub struct ResolvedReceiverCall {
 struct PendingInstantiation {
     source: SourceInfo,
     function_name: String,
-    caller_name: Option<String>,
     caller_type_params: HashMap<String, Bounds>,
     type_params: Vec<TypeParam>,
     type_args: Vec<Type>,
@@ -987,6 +997,8 @@ pub struct ClosureInfo {
     pub body: Expr,
     pub lifetime_params: Vec<LifetimeParam>,
     pub lifetime_args: Vec<Lifetime>,
+    pub type_params: Vec<TypeParam>,
+    pub type_args: Vec<Type>,
     pub markers: Markers,
     pub is_auto_clone: bool,
     pub is_auto_destroy: bool,
@@ -999,7 +1011,7 @@ impl ClosureInfo {
         let self_custom = Type::synthesized(TypeKind::Custom(Instance::new(
             self.struct_name.clone(),
             self.lifetime_args.clone(),
-            Vec::new(),
+            self.type_args.clone(),
         )));
         let self_param_ty = match self.fn_kind {
             crate::hll::derive::FnKind::Fn => {
@@ -1037,7 +1049,7 @@ impl ClosureInfo {
             name: self.struct_name.clone(),
             lifetime_params: self.lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: self.type_params.clone(),
             markers: self.markers,
             fields,
             source: self.source,
@@ -1150,7 +1162,6 @@ pub(super) fn typecheck_program_collect(
     d: &mut Diagnostics,
 ) -> TypeCheckResults {
     let mut env = TypeEnv::new();
-    let mut subst = Subst::new();
     let mut reserved_lifetime_names = HashSet::new();
     for declaration in &program.declarations {
         match declaration {
@@ -1364,7 +1375,7 @@ pub(super) fn typecheck_program_collect(
         match decl {
             Declaration::Fn(f) => {
                 validate_fn_modifiers(f, FnDeclSite::Free, &f.name, d);
-                check_fn_body(&mut env, &mut subst, &mut types, f, &[], &[], &f.name, d);
+                check_fn_body(&mut env, &mut types, f, &[], &[], &f.name, d);
             }
             Declaration::Impl(i) => {
                 for method in &i.methods {
@@ -1373,7 +1384,6 @@ pub(super) fn typecheck_program_collect(
                     validate_fn_modifiers(method, FnDeclSite::ImplMethod, &context, d);
                     check_fn_body(
                         &mut env,
-                        &mut subst,
                         &mut types,
                         method,
                         &i.lifetime_params,
@@ -1387,104 +1397,14 @@ pub(super) fn typecheck_program_collect(
         }
     }
 
-    // Check for unresolved type variables
-    let mut reported_vars = HashSet::new();
-    for (source, ty) in &types.expression_types {
-        let resolved = subst.resolve(ty);
-        let mut unresolved = HashSet::new();
-        collect_unresolved_vars(&resolved, &subst, &mut unresolved);
-        if !unresolved.is_empty() {
-            let has_unreported = unresolved.iter().any(|id| !reported_vars.contains(id));
-            if has_unreported {
-                reported_vars.extend(unresolved);
-                let diagnostic = source_diagnostic(
-                    HllTypeCheckCode::AmbiguousType,
-                    *source,
-                    format!("type annotations needed: type of expression is ambiguous (could not resolve type variable in {})", resolved),
-                );
-                d.push_error(match types.expression_contexts.get(source) {
-                    Some(context) => diagnostic.in_function(context),
-                    None => diagnostic,
-                });
-            }
-        }
-    }
-    for pending in &types.pending_instantiations {
-        for argument in &pending.type_args {
-            let resolved = subst.resolve(argument);
-            let mut unresolved = HashSet::new();
-            collect_unresolved_vars(&resolved, &subst, &mut unresolved);
-            if unresolved.iter().any(|id| !reported_vars.contains(id)) {
-                reported_vars.extend(unresolved);
-                let diagnostic = source_diagnostic(
-                    HllTypeCheckCode::AmbiguousType,
-                    pending.source,
-                    format!(
-                        "type annotations needed: cannot infer all type arguments for function '{}'",
-                        pending.function_name
-                    ),
-                );
-                d.push_error(match &pending.caller_name {
-                    Some(function) => diagnostic.in_function(function),
-                    None => diagnostic,
-                });
-            }
-        }
-    }
-
-    // Resolve all captured expression types in the final map
-    let mut resolved_types = IndexMap::new();
-    for (source, ty) in std::mem::take(&mut types.expression_types) {
-        resolved_types.insert(source, subst.resolve_default(&ty));
-    }
-    types.expression_types = resolved_types;
-    let resolve_instance = |instantiation: &mut Instance| {
-        for lifetime in &mut instantiation.lifetime_args {
-            *lifetime = subst.resolve_lifetime(lifetime);
-        }
-        for ty in &mut instantiation.type_args {
-            *ty = subst.resolve_default(ty);
-        }
-    };
-    for instantiation in types.function_instantiations.values_mut() {
-        resolve_instance(instantiation);
-    }
-    let resolve_method_target = |target: &mut ResolvedMethodTarget| match target {
-        ResolvedMethodTarget::Inherent { self_ty, method } => {
-            *self_ty = subst.resolve_default(self_ty);
-            resolve_instance(method);
-        }
-        ResolvedMethodTarget::Trait {
-            trait_path,
-            self_ty,
-            method,
-        } => {
-            *self_ty = subst.resolve_default(self_ty);
-            resolve_instance(trait_path);
-            resolve_instance(method);
-        }
-        ResolvedMethodTarget::EnumConstructor { enum_instance, .. } => {
-            resolve_instance(enum_instance);
-        }
-    };
-    for call in types.receiver_calls.values_mut() {
-        match &mut call.target {
-            ResolvedReceiverTarget::Method(target) => resolve_method_target(target),
-            ResolvedReceiverTarget::FreeFunction(instance) => resolve_instance(instance),
-            ResolvedReceiverTarget::Field => {}
-        }
-    }
-    for target in types.qualified_calls.values_mut() {
-        resolve_method_target(target);
-    }
     for closure in types.closures.values_mut() {
-        for p in &mut closure.params {
-            p.ty = subst.resolve_default(&p.ty);
-        }
-        closure.ret_ty = subst.resolve_default(&closure.ret_ty);
+        let scope = closure
+            .type_params
+            .iter()
+            .map(|p| (p.name.clone(), p.bounds.clone()))
+            .collect::<HashMap<_, _>>();
         for c in &mut closure.captures {
-            c.ty = subst.resolve_default(&c.ty);
-            let field_markers = env.class_of(&c.ty, &HashMap::new());
+            let field_markers = env.class_of(&c.ty, &scope);
             c.is_copy = field_markers.declared(Marker::Copy);
             c.is_drop = field_markers.declared(Marker::Drop);
         }
@@ -1510,7 +1430,7 @@ pub(super) fn typecheck_program_collect(
         let mut is_drop = true;
         let mut is_move = true;
         for c in &closure.captures {
-            let field_markers = env.class_of(&c.ty, &HashMap::new());
+            let field_markers = env.class_of(&c.ty, &scope);
             if !field_markers.declared(Marker::Copy) {
                 is_copy = false;
             }
@@ -1544,12 +1464,12 @@ pub(super) fn typecheck_program_collect(
             let target_ty = Type::synthesized(TypeKind::Custom(Instance::new(
                 closure.struct_name.clone(),
                 closure.lifetime_args.clone(),
-                Vec::new(),
+                closure.type_args.clone(),
             )));
             env.impls.push(ImplBlock {
                 lifetime_params: closure.lifetime_params.clone(),
                 outlives: Vec::new(),
-                type_params: Vec::new(),
+                type_params: closure.type_params.clone(),
                 trait_path: Some(Instance::bare("AutoClone")),
                 target: target_ty,
                 methods: Vec::new(),
@@ -1563,12 +1483,12 @@ pub(super) fn typecheck_program_collect(
             let target_ty = Type::synthesized(TypeKind::Custom(Instance::new(
                 closure.struct_name.clone(),
                 closure.lifetime_args.clone(),
-                Vec::new(),
+                closure.type_args.clone(),
             )));
             env.impls.push(ImplBlock {
                 lifetime_params: closure.lifetime_params.clone(),
                 outlives: Vec::new(),
-                type_params: Vec::new(),
+                type_params: closure.type_params.clone(),
                 trait_path: Some(Instance::bare("AutoDestroy")),
                 target: target_ty,
                 methods: Vec::new(),
@@ -1579,9 +1499,6 @@ pub(super) fn typecheck_program_collect(
     types.closures_by_struct.clear();
     for closure in types.closures.values() {
         types.closures_by_struct.insert(closure.struct_name.clone(), closure.clone());
-    }
-    for params in types.synthesized_lifetime_params.values_mut() {
-        params.retain(|param| subst.resolve_lifetime(&param.lifetime) == param.lifetime);
     }
     types.pending_instantiations.clear();
     env.current_type_params.clear();
@@ -1829,7 +1746,6 @@ fn record_expression_type(
 
 fn check_fn_body(
     env: &mut TypeEnv,
-    subst: &mut Subst,
     types: &mut TypeCheckResults,
     function: &FnDecl,
     enclosing_lifetime_params: &[LifetimeParam],
@@ -1842,6 +1758,7 @@ fn check_fn_body(
     let mut effective_params = enclosing_params.to_vec();
     effective_params.extend(function.type_params.clone());
     env.current_type_params = type_params_scope(&effective_params);
+    env.current_generic_params = effective_params;
     env.current_lifetimes = enclosing_lifetime_params
         .iter()
         .chain(&function.lifetime_params)
@@ -1856,13 +1773,118 @@ fn check_fn_body(
         env.insert_var(param.name.clone(), param.ty.clone());
     }
     let errors_before = d.error_count();
+    let expr_types_before = types.expression_types.len();
     let pending_before = types.pending_instantiations.len();
-    check_inner(env, subst, body, &function.ret_ty, types, d);
-    check_instantiation_bounds(env, subst, types, pending_before, d);
+    let fn_inst_before = types.function_instantiations.len();
+    let recv_calls_before = types.receiver_calls.len();
+    let qual_calls_before = types.qualified_calls.len();
+    let closures_before = types.closures.len();
+
+    let mut subst = Subst::new();
+    check_inner(env, &mut subst, body, &function.ret_ty, types, d);
+    check_instantiation_bounds(env, &subst, types, pending_before, d);
+
+    // Check for unresolved type variables in expressions for this function
+    let mut reported_vars = HashSet::new();
+    for (source, ty) in types.expression_types.iter().skip(expr_types_before) {
+        let resolved = subst.resolve(ty);
+        let mut unresolved = HashSet::new();
+        collect_unresolved_vars(&resolved, &subst, &mut unresolved);
+        if !unresolved.is_empty() {
+            let has_unreported = unresolved.iter().any(|id| !reported_vars.contains(id));
+            if has_unreported {
+                reported_vars.extend(unresolved);
+                let diagnostic = source_diagnostic(
+                    HllTypeCheckCode::AmbiguousType,
+                    *source,
+                    format!("type annotations needed: type of expression is ambiguous (could not resolve type variable in {})", resolved),
+                );
+                d.push_error(diagnostic.in_function(context));
+            }
+        }
+    }
+    for pending in &types.pending_instantiations[pending_before..] {
+        for argument in &pending.type_args {
+            let resolved = subst.resolve(argument);
+            let mut unresolved = HashSet::new();
+            collect_unresolved_vars(&resolved, &subst, &mut unresolved);
+            if unresolved.iter().any(|id| !reported_vars.contains(id)) {
+                reported_vars.extend(unresolved);
+                let diagnostic = source_diagnostic(
+                    HllTypeCheckCode::AmbiguousType,
+                    pending.source,
+                    format!(
+                        "type annotations needed: cannot infer all type arguments for function '{}'",
+                        pending.function_name
+                    ),
+                );
+                d.push_error(diagnostic.in_function(context));
+            }
+        }
+    }
+
+    // Resolve this function's captured expression types
+    for (_, ty) in types.expression_types.iter_mut().skip(expr_types_before) {
+        *ty = subst.resolve_default(ty);
+    }
+    let resolve_instance = |instantiation: &mut Instance, subst: &Subst| {
+        for lifetime in &mut instantiation.lifetime_args {
+            *lifetime = subst.resolve_lifetime(lifetime);
+        }
+        for ty in &mut instantiation.type_args {
+            *ty = subst.resolve_default(ty);
+        }
+    };
+    for instantiation in types.function_instantiations.values_mut().skip(fn_inst_before) {
+        resolve_instance(instantiation, &subst);
+    }
+    let resolve_method_target = |target: &mut ResolvedMethodTarget, subst: &Subst| match target {
+        ResolvedMethodTarget::Inherent { self_ty, method } => {
+            *self_ty = subst.resolve_default(self_ty);
+            resolve_instance(method, subst);
+        }
+        ResolvedMethodTarget::Trait {
+            trait_path,
+            self_ty,
+            method,
+        } => {
+            *self_ty = subst.resolve_default(self_ty);
+            resolve_instance(trait_path, subst);
+            resolve_instance(method, subst);
+        }
+        ResolvedMethodTarget::EnumConstructor { enum_instance, .. } => {
+            resolve_instance(enum_instance, subst);
+        }
+    };
+    for call in types.receiver_calls.values_mut().skip(recv_calls_before) {
+        match &mut call.target {
+            ResolvedReceiverTarget::Method(target) => resolve_method_target(target, &subst),
+            ResolvedReceiverTarget::FreeFunction(instance) => resolve_instance(instance, &subst),
+            ResolvedReceiverTarget::Field => {}
+        }
+    }
+    for target in types.qualified_calls.values_mut().skip(qual_calls_before) {
+        resolve_method_target(target, &subst);
+    }
+    for closure in types.closures.values_mut().skip(closures_before) {
+        for p in &mut closure.params {
+            p.ty = subst.resolve_default(&p.ty);
+        }
+        closure.ret_ty = subst.resolve_default(&closure.ret_ty);
+        for c in &mut closure.captures {
+            c.ty = subst.resolve_default(&c.ty);
+        }
+    }
+
+    if let Some(params) = types.synthesized_lifetime_params.get_mut(context) {
+        params.retain(|param| subst.resolve_lifetime(&param.lifetime) == param.lifetime);
+    }
+
     d.annotate_errors_in_function(errors_before, context);
     env.pop_scope();
     env.in_unsafe = false;
     env.current_type_params.clear();
+    env.current_generic_params.clear();
     env.current_lifetimes.clear();
     env.current_function = None;
 }
@@ -2185,7 +2207,6 @@ fn instantiate_function(
     types.pending_instantiations.push(PendingInstantiation {
         source,
         function_name: name.to_string(),
-        caller_name: env.current_function.clone(),
         caller_type_params: env.current_type_params.clone(),
         type_params: signature.type_params,
         type_args,
@@ -2924,7 +2945,6 @@ fn instantiate_method(
         types.pending_instantiations.push(PendingInstantiation {
             source,
             function_name: format!("<{}>", impl_block.target),
-            caller_name: env.current_function.clone(),
             caller_type_params: env.current_type_params.clone(),
             type_params: impl_block.type_params.clone(),
             type_args: impl_type_args,
@@ -3035,7 +3055,6 @@ fn instantiate_method_signature(
     types.pending_instantiations.push(PendingInstantiation {
         source,
         function_name: method.name.clone(),
-        caller_name: env.current_function.clone(),
         caller_type_params: env.current_type_params.clone(),
         type_params: method.type_params.clone(),
         type_args: method_type_args.clone(),
@@ -4197,7 +4216,7 @@ fn infer_lambda(
     let mut is_drop = true;
     let mut is_move = true;
     for c in &captures {
-        let field_markers = env.class_of(&c.ty, &HashMap::new());
+        let field_markers = env.class_of(&c.ty, &env.current_type_params);
         if !field_markers.declared(Marker::Copy) {
             is_copy = false;
         }
@@ -4220,6 +4239,12 @@ fn infer_lambda(
     }
     let markers = Markers::from_iter(derived);
 
+    let type_params = env.current_generic_params.clone();
+    let type_args: Vec<Type> = type_params
+        .iter()
+        .map(|p| Type::synthesized(TypeKind::Param(p.name.clone())))
+        .collect();
+
     let fn_kind = crate::hll::derive::infer_closure_fn_kind(&captures, &body, env);
     let resolved_params: Vec<Param> = typed_params
         .iter()
@@ -4241,6 +4266,8 @@ fn infer_lambda(
         body: body.clone(),
         lifetime_params: lifetime_params.clone(),
         lifetime_args: lifetime_args.clone(),
+        type_params: type_params.clone(),
+        type_args: type_args.clone(),
         markers,
         is_auto_clone: false,
         is_auto_destroy: false,
@@ -4257,7 +4284,7 @@ fn infer_lambda(
     let target_ty = Type::synthesized(TypeKind::Custom(Instance::new(
         struct_name.clone(),
         lifetime_args.clone(),
-        Vec::new(),
+        type_args.clone(),
     )));
     let args_ty = Type::synthesized(TypeKind::Tuple(
         resolved_params.iter().map(|p| p.ty.clone()).collect(),
@@ -4291,7 +4318,7 @@ fn infer_lambda(
     env.impls.push(ImplBlock {
         lifetime_params: lifetime_params.clone(),
         outlives: Vec::new(),
-        type_params: Vec::new(),
+        type_params: type_params.clone(),
         trait_path: Some(Instance::new(
             "FnOnce".to_string(),
             Vec::new(),
@@ -4333,7 +4360,7 @@ fn infer_lambda(
         env.impls.push(ImplBlock {
             lifetime_params: lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: type_params.clone(),
             trait_path: Some(Instance::new(
                 "FnMut".to_string(),
                 Vec::new(),
@@ -4376,13 +4403,13 @@ fn infer_lambda(
         env.impls.push(ImplBlock {
             lifetime_params: lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: type_params.clone(),
             trait_path: Some(Instance::new(
                 "Fn".to_string(),
                 Vec::new(),
                 vec![args_ty, resolved_ret],
             )),
-            target: target_ty,
+            target: target_ty.clone(),
             methods: vec![call_decl],
             source: lambda_expr.source,
         });
@@ -4391,7 +4418,7 @@ fn infer_lambda(
     Type::synthesized(TypeKind::Custom(Instance::new(
         struct_name,
         lifetime_args,
-        Vec::new(),
+        type_args,
     )))
 }
 

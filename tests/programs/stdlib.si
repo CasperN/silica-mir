@@ -48,6 +48,11 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
   }
 }
 
+impl<T: AutoClone> AutoClone for Box<T> {
+  fn clone(&self) -> Self {
+    Box::new_in_place(|| self.*.get().*.clone())
+  }
+}
 
 # PhantomData<'a, T>
 #

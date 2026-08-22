@@ -5,7 +5,7 @@
 
 use crate::common::{Abi, Linkage, Marker, Markers, RefKind, SourceInfo};
 use crate::hll::ast::{EnumDecl, StructDecl, StructField, TypeKind};
-use crate::hll::lowering::lower_type;
+use crate::hll::lowering::{lower_type, lower_type_params};
 use crate::hll::type_check::TypeEnv;
 use crate::mir::ast::{self as mir, BasicBlock, DeclMeta, GenericParams, Place};
 use crate::mir::helpers::*;
@@ -20,28 +20,48 @@ pub fn has_linear_reference_obligation(fields: &[StructField]) -> bool {
 }
 
 pub fn can_derive_auto_clone(s: &StructDecl, env: &TypeEnv) -> bool {
+    let scope = s
+        .type_params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds.clone()))
+        .collect::<std::collections::HashMap<_, _>>();
     s.fields
         .iter()
-        .all(|f| env.type_satisfies_trait(&f.ty, &crate::hll::ast::Instance::bare("AutoClone")))
+        .all(|f| env.type_satisfies_trait_with_scope(&f.ty, &crate::hll::ast::Instance::bare("AutoClone"), &scope))
 }
 
 pub fn can_derive_auto_clone_enum(e: &EnumDecl, env: &TypeEnv) -> bool {
+    let scope = e
+        .type_params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds.clone()))
+        .collect::<std::collections::HashMap<_, _>>();
     e.variants
         .iter()
-        .all(|v| env.type_satisfies_trait(&v.ty, &crate::hll::ast::Instance::bare("AutoClone")))
+        .all(|v| env.type_satisfies_trait_with_scope(&v.ty, &crate::hll::ast::Instance::bare("AutoClone"), &scope))
 }
 
 pub fn can_derive_auto_destroy(s: &StructDecl, env: &TypeEnv) -> bool {
+    let scope = s
+        .type_params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds.clone()))
+        .collect::<std::collections::HashMap<_, _>>();
     !has_linear_reference_obligation(&s.fields)
         && s.fields.iter().all(|f| {
-            env.type_satisfies_trait(&f.ty, &crate::hll::ast::Instance::bare("AutoDestroy"))
+            env.type_satisfies_trait_with_scope(&f.ty, &crate::hll::ast::Instance::bare("AutoDestroy"), &scope)
         })
 }
 
 pub fn can_derive_auto_destroy_enum(e: &EnumDecl, env: &TypeEnv) -> bool {
+    let scope = e
+        .type_params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds.clone()))
+        .collect::<std::collections::HashMap<_, _>>();
     e.variants
         .iter()
-        .all(|v| env.type_satisfies_trait(&v.ty, &crate::hll::ast::Instance::bare("AutoDestroy")))
+        .all(|v| env.type_satisfies_trait_with_scope(&v.ty, &crate::hll::ast::Instance::bare("AutoDestroy"), &scope))
 }
 
 // ---------------- Closure Calling Capability (Fn / FnMut / FnOnce) ----------------
@@ -374,7 +394,7 @@ pub fn derive_auto_clone_mir(closure: &crate::hll::type_check::ClosureInfo) -> m
         mir::TypeKind::Custom(mir::Instance::new(
             closure.struct_name.clone(),
             closure.lifetime_args.clone(),
-            Vec::new(),
+            closure.type_args.iter().map(lower_type).collect(),
         )),
         source,
     );
@@ -492,7 +512,7 @@ pub fn derive_auto_clone_mir(closure: &crate::hll::type_check::ClosureInfo) -> m
         params: GenericParams {
             lifetime_params: closure.lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: lower_type_params(&closure.type_params),
             source,
         },
         trait_path: Some(mir::Instance::bare("AutoClone")),
@@ -508,7 +528,7 @@ pub fn derive_auto_destroy_mir(closure: &crate::hll::type_check::ClosureInfo) ->
         mir::TypeKind::Custom(mir::Instance::new(
             closure.struct_name.clone(),
             closure.lifetime_args.clone(),
-            Vec::new(),
+            closure.type_args.iter().map(lower_type).collect(),
         )),
         source,
     );
@@ -593,7 +613,7 @@ pub fn derive_auto_destroy_mir(closure: &crate::hll::type_check::ClosureInfo) ->
         params: GenericParams {
             lifetime_params: closure.lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: lower_type_params(&closure.type_params),
             source,
         },
         trait_path: Some(mir::Instance::bare("AutoDestroy")),
@@ -633,7 +653,7 @@ fn derive_fn_trait_method_mir(
         mir::TypeKind::Custom(mir::Instance::new(
             closure.struct_name.clone(),
             closure.lifetime_args.clone(),
-            Vec::new(),
+            closure.type_args.iter().map(lower_type).collect(),
         )),
         source,
     );
@@ -683,7 +703,7 @@ fn derive_fn_trait_method_mir(
     let callee = const_op(mir::ConstVal::FnName(mir::Instance::new(
         closure.fn_name.clone(),
         Vec::new(),
-        Vec::new(),
+        closure.type_args.iter().map(lower_type).collect(),
     )));
 
     let mut call_args = Vec::new();
@@ -787,7 +807,7 @@ fn derive_fn_trait_method_mir(
         params: GenericParams {
             lifetime_params: closure.lifetime_params.clone(),
             outlives: Vec::new(),
-            type_params: Vec::new(),
+            type_params: lower_type_params(&closure.type_params),
             source,
         },
         trait_path: Some(mir::Instance::new(
